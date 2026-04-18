@@ -1,0 +1,111 @@
+"""Document loaders for PDF and web sources."""
+
+from __future__ import annotations
+
+import datetime
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import httpx
+import structlog
+from bs4 import BeautifulSoup
+
+from rag.exceptions import DocumentLoadError
+
+logger = structlog.get_logger(__name__)
+
+_STRIP_TAGS = {"nav", "footer", "script", "style", "header", "aside"}
+
+
+@dataclass
+class Document:
+    """A loaded document before chunking."""
+
+    text: str
+    metadata: dict[str, Any]
+    source: str
+
+
+class PDFLoader:
+    """Load a PDF file page-by-page using pypdf."""
+
+    def load(self, path: Path) -> list[Document]:
+        """Return one Document per page. Raises DocumentLoadError on any failure."""
+        try:
+            import pypdf  # noqa: PLC0415
+        except ImportError as exc:
+            raise DocumentLoadError(
+                source=str(path),
+                message="pypdf is not installed. Run: pip install pypdf",
+            ) from exc
+
+        try:
+            reader = pypdf.PdfReader(str(path))
+            total_pages = len(reader.pages)
+            documents: list[Document] = []
+
+            for page_num, page in enumerate(reader.pages):
+                text = page.extract_text() or ""
+                text = text.strip()
+                if not text:
+                    logger.debug("pdf_page_empty", source=str(path), page=page_num)
+                    continue
+                documents.append(
+                    Document(
+                        text=text,
+                        metadata={
+                            "source": path.name,
+                            "page": page_num,
+                            "total_pages": total_pages,
+                        },
+                        source=str(path),
+                    )
+                )
+
+            logger.info(
+                "pdf_loaded",
+                source=str(path),
+                pages=total_pages,
+                non_empty=len(documents),
+            )
+            return documents
+
+        except Exception as exc:
+            raise DocumentLoadError(source=str(path)) from exc
+
+
+class WebLoader:
+    """Load a web page using httpx and parse its text with BeautifulSoup."""
+
+    def __init__(self, timeout: float = 30.0) -> None:
+        self._timeout = timeout
+
+    def load(self, url: str) -> list[Document]:
+        """Return a single Document with the page's cleaned text.
+
+        Strips nav, footer, script, and style tags before extracting text.
+        Raises DocumentLoadError on network or parse errors.
+        """
+        try:
+            response = httpx.get(url, timeout=self._timeout, follow_redirects=True)
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            for tag in soup.find_all(_STRIP_TAGS):
+                tag.decompose()
+
+            text = soup.get_text(separator=" ", strip=True)
+            fetched_at = datetime.datetime.now(datetime.UTC).isoformat()
+
+            logger.info("web_loaded", url=url, chars=len(text))
+            return [
+                Document(
+                    text=text,
+                    metadata={"source": url, "fetched_at": fetched_at},
+                    source=url,
+                )
+            ]
+
+        except Exception as exc:
+            raise DocumentLoadError(source=url) from exc

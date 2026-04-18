@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in your values.
+# terraform.tfvars is git-ignored — never commit it.
+
+aws_region   = "us-east-1"
+project_name = "stratum"
+environment  = "prod"
+
+# Name of an existing EC2 key pair in your AWS account
+key_pair_name = "your-key-pair-name"
+
+# Restrict to your own IP to avoid exposing SSH publicly
+# Find your IP: curl https://checkip.amazonaws.com
+allowed_ssh_cidr = "203.0.113.0/32"
+
+# Instance types (change to save cost or increase capacity)
+instance_type_weaviate     = "t3.medium"
+instance_type_api          = "t3.small"
+weaviate_data_volume_size_gb = 20
+weaviate_version           = "1.25.3"

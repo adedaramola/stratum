@@ -1,0 +1,96 @@
+# RAGAS eval runs on a weekly schedule and on manual trigger only.
+# It is NOT triggered on every PR because:
+#   1. faithfulness and answer_relevancy use an LLM judge — costs ~$0.02-0.10 per run
+#   2. LLM judge scores vary +-0.03-0.05 between runs — frequent CI creates flakiness
+#   3. A weekly cadence catches regressions without burning API budget
+
+name: RAGAS Evaluation
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 6 * * 1"  # every Monday at 06:00 UTC
+
+jobs:
+  ragas-eval:
+    name: RAGAS Evaluation Gate
+    runs-on: ubuntu-latest
+
+    services:
+      weaviate:
+        image: semitechnologies/weaviate:1.25.3
+        ports:
+          - "8080:8080"
+          - "50051:50051"
+        env:
+          QUERY_DEFAULTS_LIMIT: "25"
+          AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+          PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+          DEFAULT_VECTORIZER_MODULE: "none"
+          ENABLE_MODULES: ""
+          CLUSTER_HOSTNAME: "node1"
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8080/v1/.well-known/ready"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Ingest golden documents
+        run: stratum-ingest --source data/golden/docs/ --env ci
+        env:
+          STRATUM_STORE_BACKEND: weaviate
+          STRATUM_EMBED_BACKEND: openai
+          STRATUM_ANTHROPIC_API_KEY: ${{ secrets.STRATUM_ANTHROPIC_API_KEY }}
+          STRATUM_OPENAI_API_KEY: ${{ secrets.STRATUM_OPENAI_API_KEY }}
+
+      - name: Run RAGAS evaluation gate
+        run: pytest tests/e2e/test_ragas_eval.py -v --tb=short
+        env:
+          STRATUM_STORE_BACKEND: weaviate
+          STRATUM_EMBED_BACKEND: openai
+          STRATUM_ANTHROPIC_API_KEY: ${{ secrets.STRATUM_ANTHROPIC_API_KEY }}
+          STRATUM_OPENAI_API_KEY: ${{ secrets.STRATUM_OPENAI_API_KEY }}
+          STRATUM_EVAL_WARN_ONLY: "true"
+
+      - name: Upload RAGAS report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragas-report
+          path: reports/ragas_report.json
+          retention-days: 30
+
+      - name: Write scores to job summary
+        if: always()
+        run: |
+          python -c "
+          import json, pathlib, sys
+          p = pathlib.Path('reports/ragas_report.json')
+          if not p.exists():
+              print('No report found.')
+              sys.exit(0)
+          r = json.loads(p.read_text())
+          print('## RAGAS Scores')
+          print('| Metric | Score | Threshold |')
+          print('|--------|-------|-----------|')
+          thresholds = {'faithfulness': 0.85, 'answer_relevancy': 0.80, 'context_precision': 0.75, 'context_recall': 0.70}
+          for k, v in r.get('scores', {}).items():
+              t = thresholds.get(k, '-')
+              status = '✅' if isinstance(t, float) and v >= t else '⚠️'
+              print(f'| {k} | {v:.3f} | {t} {status} |')
+          print()
+          print(f'**Passed:** {r.get(\"passed\", False)}')
+          " >> $GITHUB_STEP_SUMMARY

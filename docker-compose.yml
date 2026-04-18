@@ -1,0 +1,31 @@
+# Weaviate is the PRODUCTION store backend.
+# The default backend is Chroma — zero infrastructure required for local development.
+# Only run this file if STRATUM_STORE_BACKEND=weaviate in your .env.
+# Start:  make docker-up
+# Verify: curl http://localhost:8080/v1/.well-known/ready
+
+services:
+  weaviate:
+    image: semitechnologies/weaviate:1.25.3
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: "25"
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "none"
+      ENABLE_MODULES: ""
+      CLUSTER_HOSTNAME: "node1"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: on-failure:3
+
+volumes:
+  weaviate_data:
