@@ -5,6 +5,9 @@ install:
 install-local-embed:
 	pip install -e ".[local-embed]"
 
+install-ui:
+	pip install -e ".[ui]"
+
 lint:
 	ruff check src/ tests/
 	ruff format --check src/ tests/
@@ -33,6 +36,12 @@ eval:
 ingest:
 	stratum-ingest --source $(SOURCE)
 
+api:
+	uvicorn rag.api.main:app --reload --host 0.0.0.0 --port 8000
+
+ui:
+	streamlit run app.py
+
 docker-up:
 	docker compose up -d && docker compose ps
 
@@ -45,5 +54,5 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	rm -rf .coverage htmlcov/ dist/ .mypy_cache/ .ruff_cache/ reports/ .chroma/
 
-.PHONY: install install-local-embed lint format typecheck test-unit test-integration \
-        test-e2e test eval ingest docker-up docker-down ci clean
+.PHONY: install install-local-embed install-ui lint format typecheck test-unit \
+        test-integration test-e2e test eval ingest api ui docker-up docker-down ci clean
