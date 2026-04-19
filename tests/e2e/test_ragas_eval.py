@@ -65,6 +65,4 @@ def test_ragas_thresholds(rag_pipeline: RAGPipeline) -> None:
             )
         else:
             failure_lines = "\n".join(f"  · {f}" for f in result.failures)
-            pytest.fail(
-                f"RAGAS gate failed:\n{failure_lines}\n\nAll scores: {result.scores}"
-            )
+            pytest.fail(f"RAGAS gate failed:\n{failure_lines}\n\nAll scores: {result.scores}")

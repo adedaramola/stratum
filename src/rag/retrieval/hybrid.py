@@ -172,9 +172,7 @@ class HybridRetriever:
                 candidates.append(meta)
         return candidates
 
-    def _rerank(
-        self, query: str, candidates: list[dict[str, Any]]
-    ) -> list[RetrievedChunk]:
+    def _rerank(self, query: str, candidates: list[dict[str, Any]]) -> list[RetrievedChunk]:
         """Score candidates with the cross-encoder and return sorted RetrievedChunks."""
         if not candidates:
             return []

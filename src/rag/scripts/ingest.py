@@ -105,9 +105,7 @@ def main() -> None:
             store.upsert_chunks(parents, embeddings=None)
             store.upsert_chunks(children, embeddings=child_embeddings)
 
-            all_child_chunks.extend(
-                {"id": c.id, "text": c.text, **c.metadata} for c in children
-            )
+            all_child_chunks.extend({"id": c.id, "text": c.text, **c.metadata} for c in children)
             parent_count += len(parents)
             child_count += len(children)
             doc_count += 1

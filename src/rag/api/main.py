@@ -103,8 +103,7 @@ def query(body: QueryRequest) -> QueryResponse:
         return QueryResponse(
             answer=result.answer,
             citations=[
-                CitationOut(index=c.index, source=c.source, page=c.page)
-                for c in result.citations
+                CitationOut(index=c.index, source=c.source, page=c.page) for c in result.citations
             ],
             context_chunks=len(result.raw_context),
         )

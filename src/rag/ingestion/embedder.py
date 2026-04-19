@@ -39,9 +39,7 @@ class OpenAIEmbedder:
 
             self._client = OpenAI(api_key=api_key)
         except ImportError as exc:
-            raise ImportError(
-                "openai package is required. Run: pip install openai"
-            ) from exc
+            raise ImportError("openai package is required. Run: pip install openai") from exc
 
     def embed(self, text: str) -> list[float]:
         """Embed a single text string."""
@@ -53,9 +51,7 @@ class OpenAIEmbedder:
         try:
             for i in range(0, len(texts), self._batch_size):
                 batch = texts[i : i + self._batch_size]
-                response = self._client.embeddings.create(
-                    model=self.model, input=batch
-                )
+                response = self._client.embeddings.create(model=self.model, input=batch)
                 results.extend(item.embedding for item in response.data)
         except Exception as exc:
             raise EmbeddingError(model=self.model) from exc
@@ -111,9 +107,7 @@ def get_embedder(settings: Settings) -> EmbedderProtocol:
     """Factory: return the configured embedder backend."""
     if settings.embed_backend == "openai":
         if settings.openai_api_key is None:
-            raise ValueError(
-                "STRATUM_OPENAI_API_KEY is required when embed_backend='openai'"
-            )
+            raise ValueError("STRATUM_OPENAI_API_KEY is required when embed_backend='openai'")
         return OpenAIEmbedder(
             model=settings.embed_model_openai,
             api_key=settings.openai_api_key.get_secret_value(),

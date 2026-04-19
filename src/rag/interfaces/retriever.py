@@ -14,7 +14,7 @@ class RetrievedChunk:
     text: str
     source: str
     page: int | None  # None for web-sourced chunks
-    score: float      # cross-encoder score after re-ranking
+    score: float  # cross-encoder score after re-ranking
 
 
 @runtime_checkable

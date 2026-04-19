@@ -106,9 +106,7 @@ class ChromaStore:
         except Exception as exc:
             raise StoreError(f"Chroma upsert failed: {exc}") from exc
 
-    def semantic_search(
-        self, query_vector: list[float], top_k: int
-    ) -> list[dict[str, Any]]:
+    def semantic_search(self, query_vector: list[float], top_k: int) -> list[dict[str, Any]]:
         """ANN search over child chunks only."""
         try:
             results = self._children.query(
@@ -159,9 +157,7 @@ class ChromaStore:
         if not self._bm25_path.exists():
             return []
         try:
-            data: list[dict[str, Any]] = json.loads(
-                self._bm25_path.read_text(encoding="utf-8")
-            )
+            data: list[dict[str, Any]] = json.loads(self._bm25_path.read_text(encoding="utf-8"))
             logger.info("bm25_corpus_loaded", path=str(self._bm25_path), count=len(data))
             return data
         except Exception as exc:

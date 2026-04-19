@@ -46,9 +46,7 @@ class HierarchicalChunker:
         self._child_token_size = settings.child_token_size
         self._overlap_sentences = settings.overlap_sentences
 
-    def chunk_document(
-        self, text: str, metadata: dict[str, Any]
-    ) -> Generator[Chunk, None, None]:
+    def chunk_document(self, text: str, metadata: dict[str, Any]) -> Generator[Chunk, None, None]:
         """Yield chunks depth-first: parent → its children → next parent → its children.
 
         Yields nothing for empty input without raising.
@@ -71,9 +69,7 @@ class HierarchicalChunker:
                 message=f"Unexpected error chunking document '{doc_id}': {exc}",
             ) from exc
 
-    def _build_parent_chunks(
-        self, text: str, metadata: dict[str, Any]
-    ) -> list[Chunk]:
+    def _build_parent_chunks(self, text: str, metadata: dict[str, Any]) -> list[Chunk]:
         """Split text into parent-sized chunks on sentence boundaries."""
         sentences = _SENTENCE_BOUNDARY.split(text)
         parents: list[Chunk] = []

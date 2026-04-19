@@ -135,12 +135,18 @@ class TestWeaviateStore:
 
     def test_upsert_and_search(self, store: Any) -> None:
         parent = Chunk(
-            id="wp-1", text="weaviate parent", metadata={"source": "w.pdf", "page": 0},
-            parent_id=None, token_count=50,
+            id="wp-1",
+            text="weaviate parent",
+            metadata={"source": "w.pdf", "page": 0},
+            parent_id=None,
+            token_count=50,
         )
         child = Chunk(
-            id="wc-1", text="weaviate child", metadata={"source": "w.pdf", "page": 0},
-            parent_id="wp-1", token_count=10,
+            id="wc-1",
+            text="weaviate child",
+            metadata={"source": "w.pdf", "page": 0},
+            parent_id="wp-1",
+            token_count=10,
         )
         embedding = [0.1] * 1536
         store.upsert_chunks([parent])

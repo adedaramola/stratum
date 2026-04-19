@@ -149,9 +149,7 @@ class WeaviateStore:
         except Exception as exc:
             raise StoreError(f"Weaviate upsert failed: {exc}") from exc
 
-    def semantic_search(
-        self, query_vector: list[float], top_k: int
-    ) -> list[dict[str, Any]]:
+    def semantic_search(self, query_vector: list[float], top_k: int) -> list[dict[str, Any]]:
         """ANN search over child chunks only."""
         try:
             col = self._client.collections.get(_CHILD_COLLECTION)

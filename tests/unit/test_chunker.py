@@ -43,8 +43,7 @@ def test_parent_child_relationship(chunker: HierarchicalChunker) -> None:
     assert len(children) > 0, "Expected at least one child chunk"
     for child in children:
         assert child.parent_id in parents, (
-            f"Child {child.id} has parent_id {child.parent_id!r} "
-            f"not found in parent set"
+            f"Child {child.id} has parent_id {child.parent_id!r} not found in parent set"
         )
 
 
@@ -73,9 +72,7 @@ def test_sentence_overlap(chunker: HierarchicalChunker) -> None:
             prev_sentences = set(prev.text.split(". "))
             next_sentences = set(nxt.text.split(". "))
             overlap = prev_sentences & next_sentences
-            assert len(overlap) >= 1, (
-                f"Adjacent children of parent {parent.id} share no sentences"
-            )
+            assert len(overlap) >= 1, f"Adjacent children of parent {parent.id} share no sentences"
 
 
 def test_token_budget(chunker: HierarchicalChunker) -> None:
@@ -109,9 +106,7 @@ def test_metadata_propagation(chunker: HierarchicalChunker) -> None:
     assert len(children) > 0
     for child in children:
         for key in metadata:
-            assert key in child.metadata, (
-                f"Child {child.id} is missing metadata key '{key}'"
-            )
+            assert key in child.metadata, f"Child {child.id} is missing metadata key '{key}'"
 
 
 def test_empty_input(chunker: HierarchicalChunker) -> None:

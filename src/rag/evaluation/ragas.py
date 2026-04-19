@@ -119,9 +119,7 @@ class RAGASEvaluator:
                     pairs.append(json.loads(line))
         return pairs
 
-    def _run_pipeline(
-        self, qa_pairs: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def _run_pipeline(self, qa_pairs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Call pipeline_fn for each question and collect results."""
         rows: list[dict[str, Any]] = []
         for qa in qa_pairs:
@@ -154,9 +152,7 @@ class RAGASEvaluator:
         try:
             from datasets import Dataset  # noqa: PLC0415
         except ImportError as exc:
-            raise ImportError(
-                "Install eval dependencies: pip install 'stratum[eval]'"
-            ) from exc
+            raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
 
         return Dataset.from_list(rows)
 
@@ -172,9 +168,7 @@ class RAGASEvaluator:
                 faithfulness,
             )
         except ImportError as exc:
-            raise ImportError(
-                "Install eval dependencies: pip install 'stratum[eval]'"
-            ) from exc
+            raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
 
         result = evaluate(
             dataset,
@@ -190,9 +184,7 @@ class RAGASEvaluator:
             if actual is None:
                 continue
             if actual < threshold:
-                err = ThresholdViolationError(
-                    metric=metric, actual=actual, required=threshold
-                )
+                err = ThresholdViolationError(metric=metric, actual=actual, required=threshold)
                 if self._warn_only:
                     logger.warning("ragas_threshold_warning", detail=str(err))
                 failures.append(str(err))

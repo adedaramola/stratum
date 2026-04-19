@@ -46,9 +46,7 @@ class CitationGroundedGenerator:
 
             self._client = anthropic.Anthropic(api_key=api_key)
         except ImportError as exc:
-            raise ImportError(
-                "anthropic package is required. Run: pip install anthropic"
-            ) from exc
+            raise ImportError("anthropic package is required. Run: pip install anthropic") from exc
 
     def generate(self, query: str, chunks: list[RetrievedChunk]) -> CitedAnswer:
         """Generate an answer grounded in the provided chunks.
@@ -99,9 +97,7 @@ class CitationGroundedGenerator:
         return "\n\n".join(lines)
 
     @staticmethod
-    def _extract_citations(
-        answer: str, chunks: list[RetrievedChunk]
-    ) -> list[CitationRef]:
+    def _extract_citations(answer: str, chunks: list[RetrievedChunk]) -> list[CitationRef]:
         """Parse [src N] markers from the answer into CitationRef objects.
 
         - Deduplicates: [src 1] ... [src 1] → one CitationRef
