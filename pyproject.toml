@@ -39,8 +39,10 @@ dependencies = [
 local-embed = [
   "torch>=2.2.0",
 ]
-# RAGAS eval — separate optional group (LLM-evaluated, costs money per run)
+# Eval — DeepEval (primary) + RAGAS (opt-in legacy). Both LLM-evaluated.
 eval = [
+  "deepeval>=1.4.0",       # primary eval framework — pytest-native, local judge support
+  "ollama>=0.3.0",         # client for local Ollama judge — zero API cost
   "ragas==0.1.21",         # pinned — RAGAS has broken API on minor bumps historically
   "datasets>=2.19.0",
   "pandas>=2.2.0",

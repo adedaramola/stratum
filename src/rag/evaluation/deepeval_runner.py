@@ -115,12 +115,12 @@ def build_judge(settings: Settings) -> OllamaJudge | Any:
             base_url=settings.eval_ollama_base_url,
         )
     if settings.eval_judge_backend == "openai":
+        if settings.openai_api_key is None:
+            raise ValueError("STRATUM_OPENAI_API_KEY is required when eval_judge_backend=openai")
         try:
             from deepeval.models import GPTModel  # noqa: PLC0415
         except ImportError as exc:
             raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
-        if settings.openai_api_key is None:
-            raise ValueError("STRATUM_OPENAI_API_KEY is required when eval_judge_backend=openai")
         return GPTModel(
             model=settings.eval_judge_openai_model,
             api_key=settings.openai_api_key.get_secret_value(),
