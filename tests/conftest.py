@@ -75,9 +75,7 @@ class MockStore:
                 entry["_vector"] = embs[i]
             self._children[chunk.id] = entry
 
-    def semantic_search(
-        self, query_vector: list[float], top_k: int
-    ) -> list[dict[str, Any]]:
+    def semantic_search(self, query_vector: list[float], top_k: int) -> list[dict[str, Any]]:
         """Return top_k children by cosine similarity to query_vector."""
         import math
 
@@ -140,16 +138,25 @@ def mock_store() -> MockStore:
 
 @pytest.fixture
 def mock_pipeline(mock_store: MockStore, mock_embedder: MockEmbedder) -> RAGPipeline:
-    """RAGPipeline wired with in-memory mocks. Zero network calls."""
+    """RAGPipeline wired with in-memory mocks. Zero network calls, no model downloads."""
+    from unittest.mock import MagicMock, patch
+
+    import numpy as np
+
     from rag.retrieval.hybrid import HybridRetriever
 
-    retriever = HybridRetriever(
-        store=mock_store,
-        embedder=mock_embedder,
-        reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
-        top_k_dense=5,
-        top_k_rerank=3,
-    )
+    mock_ce = MagicMock()
+    # predict() must return something with .tolist() — use numpy array
+    mock_ce.predict.side_effect = lambda pairs: np.array([0.9 - i * 0.1 for i in range(len(pairs))])
+
+    with patch("sentence_transformers.CrossEncoder", return_value=mock_ce):
+        retriever = HybridRetriever(
+            store=mock_store,
+            embedder=mock_embedder,
+            reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+            top_k_dense=5,
+            top_k_rerank=3,
+        )
     generator = MockGenerator()
     return RAGPipeline(retriever=retriever, generator=generator)  # type: ignore[arg-type]
 

@@ -89,14 +89,11 @@ class WebLoader:
         """
         headers = {
             "User-Agent": (
-                "Mozilla/5.0 (compatible; Stratum-RAG/0.1; "
-                "+https://github.com/adedaramola/stratum)"
+                "Mozilla/5.0 (compatible; Stratum-RAG/0.1; +https://github.com/adedaramola/stratum)"
             )
         }
         try:
-            response = httpx.get(
-                url, timeout=self._timeout, follow_redirects=True, headers=headers
-            )
+            response = httpx.get(url, timeout=self._timeout, follow_redirects=True, headers=headers)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.text, "html.parser")

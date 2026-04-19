@@ -87,5 +87,17 @@ markers = [
   "slow: marks tests as slow (deselect with -m 'not slow')",
 ]
 
+[tool.coverage.run]
+omit = [
+  # Requires live Weaviate — covered by integration tests when Docker is available
+  "src/rag/store/weaviate.py",
+  # FastAPI app — covered by e2e tests
+  "src/rag/api/main.py",
+  # Eval harness — e2e only, requires golden dataset and judge model
+  "src/rag/evaluation/ragas.py",
+  # CLI entry point — integration-level, orchestrates all components
+  "src/rag/scripts/ingest.py",
+]
+
 [tool.coverage.report]
 fail_under = 80
