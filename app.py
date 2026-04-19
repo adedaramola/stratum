@@ -1,7 +1,11 @@
 """Stratum RAG — Streamlit chat interface.
 
-Connects to the FastAPI backend (rag.api.main) running on localhost:8000.
-Start the backend first:
+Connects to the FastAPI backend (rag.api.main).
+The backend URL defaults to localhost:8000 but can be overridden:
+
+    STRATUM_API_URL=http://<alb-host> streamlit run app.py
+
+Start the backend first (local):
     uvicorn rag.api.main:app --reload
 
 Then run this app:
@@ -10,10 +14,12 @@ Then run this app:
 
 from __future__ import annotations
 
+import os
+
 import httpx
 import streamlit as st
 
-API_URL = "http://localhost:8000"
+API_URL = os.environ.get("STRATUM_API_URL", "http://localhost:8000").rstrip("/")
 
 # ---------------------------------------------------------------------------
 # Page config

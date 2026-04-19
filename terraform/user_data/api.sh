@@ -54,16 +54,16 @@ chmod 600 "$REPO_DIR/.env"
 echo ".env written"
 
 # ---------------------------------------------------------------------------
-# 5. Create venv and install dependencies
+# 5. Create venv and install dependencies (api + ui extras)
 # ---------------------------------------------------------------------------
 sudo -u stratum python3.11 -m venv "$REPO_DIR/.venv"
 sudo -u stratum "$REPO_DIR/.venv/bin/pip" install --quiet --upgrade pip
 sudo mkdir -p /opt/pip-tmp && chmod 1777 /opt/pip-tmp
-sudo -u stratum TMPDIR=/opt/pip-tmp "$REPO_DIR/.venv/bin/pip" install --no-cache-dir -e "$REPO_DIR[api]"
+sudo -u stratum TMPDIR=/opt/pip-tmp "$REPO_DIR/.venv/bin/pip" install --no-cache-dir -e "$REPO_DIR[api,ui]"
 echo "Dependencies installed"
 
 # ---------------------------------------------------------------------------
-# 6. Systemd service
+# 6. Systemd services — FastAPI and Streamlit UI
 # ---------------------------------------------------------------------------
 cat > /etc/systemd/system/stratum-api.service << 'UNIT'
 [Unit]
@@ -91,8 +91,35 @@ SyslogIdentifier=stratum-api
 WantedBy=multi-user.target
 UNIT
 
+cat > /etc/systemd/system/stratum-ui.service << 'UNIT'
+[Unit]
+Description=Stratum RAG Streamlit UI
+After=stratum-api.service
+Wants=stratum-api.service
+
+[Service]
+User=stratum
+Group=stratum
+WorkingDirectory=/opt/stratum
+EnvironmentFile=/opt/stratum/.env
+Environment=STRATUM_API_URL=http://localhost:8000
+ExecStart=/opt/stratum/.venv/bin/streamlit run app.py \
+    --server.port 8501 \
+    --server.address 0.0.0.0 \
+    --server.headless true \
+    --browser.gatherUsageStats false
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stratum-ui
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 systemctl daemon-reload
-systemctl enable stratum-api
+systemctl enable stratum-api stratum-ui
 
 # ---------------------------------------------------------------------------
 # 7. Wait for Weaviate to be ready before starting the API
@@ -115,5 +142,9 @@ done
 systemctl start stratum-api
 echo "stratum-api.service started"
 
+systemctl start stratum-ui
+echo "stratum-ui.service started"
+
 echo "=== Stratum: API bootstrap complete ==="
-echo "Monitor: journalctl -u stratum-api -f"
+echo "Monitor API: journalctl -u stratum-api -f"
+echo "Monitor UI:  journalctl -u stratum-ui -f"

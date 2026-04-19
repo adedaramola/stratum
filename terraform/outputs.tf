@@ -8,6 +8,11 @@ output "api_docs_url" {
   value       = "http://${aws_lb.main.dns_name}/docs"
 }
 
+output "ui_url" {
+  description = "Streamlit chat UI"
+  value       = "http://${aws_lb.main.dns_name}:8501"
+}
+
 output "alb_dns_name" {
   description = "Raw DNS name of the Application Load Balancer"
   value       = aws_lb.main.dns_name

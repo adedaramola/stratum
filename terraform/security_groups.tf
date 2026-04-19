@@ -1,13 +1,13 @@
 # ---------------------------------------------------------------------------
 # Security groups
 #
-# Traffic path:  Internet → ALB (80) → API SG (8000) → Weaviate SG (8080/50051)
+# Traffic path:  Internet → ALB (80/8501) → API SG (8000/8501) → Weaviate SG (8080/50051)
 # Weaviate is never reachable from the internet — only from the API security group.
 # ---------------------------------------------------------------------------
 
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-${var.environment}-alb-sg"
-  description = "ALB: accept HTTP from anywhere; forward to API"
+  description = "ALB: accept HTTP from anywhere; forward to API and UI"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -26,6 +26,14 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "Streamlit UI"
+    from_port   = 8501
+    to_port     = 8501
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -38,13 +46,21 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "api" {
   name        = "${var.project_name}-${var.environment}-api-sg"
-  description = "FastAPI: port 8000 from ALB only; SSH from allowed CIDR"
+  description = "FastAPI: port 8000 from ALB; Streamlit: port 8501 from ALB; SSH from allowed CIDR"
   vpc_id      = aws_vpc.main.id
 
   ingress {
     description     = "FastAPI from ALB"
     from_port       = 8000
     to_port         = 8000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  ingress {
+    description     = "Streamlit UI from ALB"
+    from_port       = 8501
+    to_port         = 8501
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
