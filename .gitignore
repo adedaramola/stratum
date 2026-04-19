@@ -14,6 +14,9 @@ dist/
 reports/
 data/raw/
 data/processed/
+data/golden/*.pdf
+data/golden/*.docx
+data/golden/*.txt
 .chroma/
 *.weaviate/
 .DS_Store

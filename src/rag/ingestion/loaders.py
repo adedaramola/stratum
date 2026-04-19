@@ -1,4 +1,4 @@
-"""Document loaders for PDF and web sources."""
+"""Document loaders for PDF, plain-text, Word (.docx), and web sources."""
 
 from __future__ import annotations
 
@@ -71,6 +71,87 @@ class PDFLoader:
             )
             return documents
 
+        except Exception as exc:
+            raise DocumentLoadError(source=str(path)) from exc
+
+
+class TextLoader:
+    """Load a plain-text file (.txt, .md, or any UTF-8 text) as a single Document."""
+
+    def load(self, path: Path) -> list[Document]:
+        """Return a single Document with the file's full text.
+
+        Raises DocumentLoadError on any read failure.
+        """
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+            if not text:
+                logger.warning("text_file_empty", source=str(path))
+                return []
+            logger.info("text_loaded", source=str(path), chars=len(text))
+            return [
+                Document(
+                    text=text,
+                    metadata={"source": path.name},
+                    source=str(path),
+                )
+            ]
+        except Exception as exc:
+            raise DocumentLoadError(source=str(path)) from exc
+
+
+class DocxLoader:
+    """Load a Microsoft Word (.docx) file using python-docx.
+
+    Extracts paragraph text in document order. Tables and headers are included
+    as paragraphs; images and embedded objects are silently skipped.
+    """
+
+    def load(self, path: Path) -> list[Document]:
+        """Return a single Document containing all paragraph text.
+
+        Raises DocumentLoadError on any failure, including missing python-docx.
+        """
+        try:
+            import docx  # noqa: PLC0415
+        except ImportError as exc:
+            raise DocumentLoadError(
+                source=str(path),
+                message="python-docx is not installed. Run: pip install python-docx",
+            ) from exc
+
+        try:
+            doc = docx.Document(str(path))
+
+            paragraphs: list[str] = []
+            for para in doc.paragraphs:
+                stripped = para.text.strip()
+                if stripped:
+                    paragraphs.append(stripped)
+
+            # Also extract text from table cells
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        stripped = cell.text.strip()
+                        if stripped:
+                            paragraphs.append(stripped)
+
+            text = "\n\n".join(paragraphs)
+            if not text:
+                logger.warning("docx_file_empty", source=str(path))
+                return []
+
+            logger.info("docx_loaded", source=str(path), paragraphs=len(paragraphs))
+            return [
+                Document(
+                    text=text,
+                    metadata={"source": path.name},
+                    source=str(path),
+                )
+            ]
+        except DocumentLoadError:
+            raise
         except Exception as exc:
             raise DocumentLoadError(source=str(path)) from exc
 

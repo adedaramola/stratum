@@ -16,34 +16,48 @@ import structlog
 from rag.config import get_settings
 from rag.ingestion.chunker import HierarchicalChunker
 from rag.ingestion.embedder import get_embedder
-from rag.ingestion.loaders import Document, PDFLoader, WebLoader
+from rag.ingestion.loaders import Document, DocxLoader, PDFLoader, TextLoader, WebLoader
 from rag.store.factory import get_store
 
 logger = structlog.get_logger(__name__)
+
+
+_EXTENSION_LOADERS: dict[str, Any] = {
+    ".pdf": PDFLoader,
+    ".txt": TextLoader,
+    ".md": TextLoader,
+    ".docx": DocxLoader,
+}
 
 
 def _resolve_sources(source: str) -> list[tuple[Any, Any]]:
     """Return a list of (loader, path_or_url) pairs from the given source argument.
 
     Accepts:
-      - A single .pdf file
-      - A URL (http:// or https://)
-      - A directory (globs *.pdf recursively)
+      - A URL (http:// or https://) — fetched as a web page
+      - A single file: .pdf, .txt, .md, .docx
+      - A directory — recursively globs all supported file types
     """
     path = Path(source)
 
     if source.startswith(("http://", "https://")):
         return [(WebLoader(), source)]
 
-    if path.is_file() and path.suffix.lower() == ".pdf":
-        return [(PDFLoader(), path)]
+    if path.is_file():
+        loader_cls = _EXTENSION_LOADERS.get(path.suffix.lower())
+        if loader_cls is None:
+            logger.error("unsupported_file_type", source=source, suffix=path.suffix)
+            sys.exit(1)
+        return [(loader_cls(), path)]
 
     if path.is_dir():
         pairs: list[tuple[Any, Any]] = []
-        for pdf in sorted(path.rglob("*.pdf")):
-            pairs.append((PDFLoader(), pdf))
+        for ext, loader_cls in _EXTENSION_LOADERS.items():
+            for file in sorted(path.rglob(f"*{ext}")):
+                pairs.append((loader_cls(), file))
         if not pairs:
-            logger.warning("no_pdfs_found", directory=source)
+            logger.warning("no_supported_files_found", directory=source,
+                           supported=list(_EXTENSION_LOADERS.keys()))
         return pairs
 
     logger.error("unknown_source_type", source=source)
