@@ -17,3 +17,11 @@ data/processed/
 .chroma/
 *.weaviate/
 .DS_Store
+terraform/*.tfvars
+!terraform/*.tfvars.example
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/.infracost/
+*.pem

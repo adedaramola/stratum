@@ -19,7 +19,7 @@ resource "aws_instance" "weaviate" {
 
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 8
+    volume_size           = 30 # AL2023 AMI requires >= 30 GB
     encrypted             = true
     delete_on_termination = true
   }
@@ -60,16 +60,22 @@ resource "aws_instance" "api" {
 
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 20 # Python venv + cross-encoder model cache
+    volume_size           = 60 # 30 GB base + ~30 GB for Python venv, torch, sentence-transformers
     encrypted             = true
     delete_on_termination = true
   }
 
-  user_data = base64encode(templatefile("${path.module}/user_data/api.sh", {
-    weaviate_host = aws_instance.weaviate.private_ip
-    weaviate_port = 8080
-    project_name  = var.project_name
+  user_data                   = base64encode(templatefile("${path.module}/user_data/api.sh", {
+    weaviate_host     = aws_instance.weaviate.private_ip
+    weaviate_port     = 8080
+    project_name      = var.project_name
+    anthropic_api_key = var.anthropic_api_key
+    openai_api_key    = var.openai_api_key
+    # Authenticated clone URL (token stripped from git remote after clone)
+    github_clone_url  = "https://x-access-token:${var.github_token}@${replace(var.github_repo, "https://", "")}"
+    github_repo       = var.github_repo
   }))
+  user_data_replace_on_change = true
 
   # Weaviate must be running before the API starts attempting to connect
   depends_on = [aws_instance.weaviate]

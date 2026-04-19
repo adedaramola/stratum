@@ -50,3 +50,27 @@ variable "weaviate_version" {
   type        = string
   default     = "1.25.3"
 }
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key — written to the instance .env at boot (STRATUM_ANTHROPIC_API_KEY)"
+  type        = string
+  sensitive   = true
+}
+
+variable "openai_api_key" {
+  description = "OpenAI API key — written to the instance .env at boot (STRATUM_OPENAI_API_KEY)"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_token" {
+  description = "GitHub PAT with repo scope — used to clone the private repo at boot, then stripped from git remote"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_repo" {
+  description = "Full GitHub repo URL (without credentials)"
+  type        = string
+  default     = "https://github.com/adedaramola/stratum.git"
+}

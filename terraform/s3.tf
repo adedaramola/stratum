@@ -1,12 +1,16 @@
 # ---------------------------------------------------------------------------
 # S3 — raw document storage
 #
-# Bucket name includes the AWS account ID to guarantee global uniqueness
-# without a random suffix (account ID is stable and human-readable in logs).
+# Bucket name uses a random 8-char hex suffix to guarantee global uniqueness
+# without exposing the AWS account ID.
 # ---------------------------------------------------------------------------
 
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
 locals {
-  bucket_name = "${var.project_name}-${var.environment}-docs-${data.aws_caller_identity.current.account_id}"
+  bucket_name = "${var.project_name}-${var.environment}-docs-${random_id.bucket_suffix.hex}"
 }
 
 resource "aws_s3_bucket" "documents" {

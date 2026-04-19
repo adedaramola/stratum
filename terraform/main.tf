@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   # Uncomment to store state in S3 (recommended for team or CI use):
@@ -36,8 +40,6 @@ provider "aws" {
 data "aws_availability_zones" "available" {
   state = "available"
 }
-
-data "aws_caller_identity" "current" {}
 
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true

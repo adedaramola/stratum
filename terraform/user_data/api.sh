@@ -1,14 +1,7 @@
 #!/bin/bash
 # API node bootstrap — Amazon Linux 2023
-# Installs Python 3.11, creates the app user and directory, writes the systemd
-# service, and templates the Weaviate connection config.
-#
-# Deploy flow after provisioning:
-#   1. SSH into the instance
-#   2. git clone your repo to /opt/stratum
-#   3. Fill in API keys in /opt/stratum/.env
-#   4. cd /opt/stratum && python3.11 -m venv .venv && .venv/bin/pip install -e ".[api]"
-#   5. systemctl start stratum-api
+# Clones the repo, writes secrets, installs deps, and starts the FastAPI service.
+# All template variables are injected by Terraform at apply time.
 set -euo pipefail
 exec > >(tee /var/log/stratum-bootstrap.log | logger -t stratum-api) 2>&1
 
@@ -17,41 +10,65 @@ echo "=== Stratum: API bootstrap starting ==="
 # ---------------------------------------------------------------------------
 # 1. System packages
 # ---------------------------------------------------------------------------
-dnf install -y git python3.11 python3.11-pip
+# curl-minimal is already on AL2023 — installing curl conflicts with it
+# python3.11-pip is not a valid AL2023 package; use ensurepip instead
+dnf install -y git python3.11
+python3.11 -m ensurepip --upgrade
 echo "Python $(python3.11 --version) installed"
 
 # ---------------------------------------------------------------------------
-# 2. App user and directory
+# 2. App user (home at /home/stratum — separate from the app directory)
 # ---------------------------------------------------------------------------
-useradd -r -m -d /opt/stratum -s /bin/bash stratum || true
-mkdir -p /opt/stratum
-chown stratum:stratum /opt/stratum
+useradd -r -m -s /bin/bash stratum || true
 
 # ---------------------------------------------------------------------------
-# 3. Write connection config (Weaviate private IP injected by Terraform)
+# 3. Clone the private repo using GitHub PAT, then strip token from remote
+#    /opt/stratum must not exist before clone — git creates it
 # ---------------------------------------------------------------------------
-cat > /opt/stratum/.env << EOF
-# Stratum environment — populated by Terraform
+REPO_DIR="/opt/stratum"
+rm -rf "$REPO_DIR"
+git clone "${github_clone_url}" "$REPO_DIR"
+
+# Strip the PAT so it is never stored in .git/config after clone
+git -C "$REPO_DIR" remote set-url origin "${github_repo}"
+chown -R stratum:stratum "$REPO_DIR"
+echo "Repo cloned to $REPO_DIR"
+
+# ---------------------------------------------------------------------------
+# 4. Write .env — connection config + API keys (injected by Terraform)
+# ---------------------------------------------------------------------------
+cat > "$REPO_DIR/.env" << 'ENVEOF'
 STRATUM_STORE_BACKEND=weaviate
+ENVEOF
+
+# Append interpolated values separately to avoid Terraform/bash quoting issues
+cat >> "$REPO_DIR/.env" << ENVEOF
 STRATUM_WEAVIATE_HOST=${weaviate_host}
 STRATUM_WEAVIATE_PORT=${weaviate_port}
+STRATUM_ANTHROPIC_API_KEY=${anthropic_api_key}
+STRATUM_OPENAI_API_KEY=${openai_api_key}
+ENVEOF
 
-# Add your API keys (do NOT commit these):
-STRATUM_ANTHROPIC_API_KEY=
-STRATUM_OPENAI_API_KEY=
-EOF
-chown stratum:stratum /opt/stratum/.env
-chmod 600 /opt/stratum/.env
-echo "Connection config written to /opt/stratum/.env"
+chown stratum:stratum "$REPO_DIR/.env"
+chmod 600 "$REPO_DIR/.env"
+echo ".env written"
 
 # ---------------------------------------------------------------------------
-# 4. Systemd service for uvicorn
+# 5. Create venv and install dependencies
+# ---------------------------------------------------------------------------
+sudo -u stratum python3.11 -m venv "$REPO_DIR/.venv"
+sudo -u stratum "$REPO_DIR/.venv/bin/pip" install --quiet --upgrade pip
+sudo mkdir -p /opt/pip-tmp && chmod 1777 /opt/pip-tmp
+sudo -u stratum TMPDIR=/opt/pip-tmp "$REPO_DIR/.venv/bin/pip" install --no-cache-dir -e "$REPO_DIR[api]"
+echo "Dependencies installed"
+
+# ---------------------------------------------------------------------------
+# 6. Systemd service
 # ---------------------------------------------------------------------------
 cat > /etc/systemd/system/stratum-api.service << 'UNIT'
 [Unit]
 Description=Stratum RAG FastAPI server
-After=network.target
-# Give Weaviate a moment to be reachable before the pipeline tries to connect
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -63,9 +80,9 @@ ExecStart=/opt/stratum/.venv/bin/uvicorn rag.api.main:app \
     --host 0.0.0.0 \
     --port 8000 \
     --workers 2 \
-    --log-config /dev/null
+    --no-access-log
 Restart=on-failure
-RestartSec=10
+RestartSec=15
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=stratum-api
@@ -76,14 +93,27 @@ UNIT
 
 systemctl daemon-reload
 systemctl enable stratum-api
-# Service is enabled but NOT started — it needs the repo to be deployed first.
-echo "stratum-api.service registered (start manually after code deployment)"
+
+# ---------------------------------------------------------------------------
+# 7. Wait for Weaviate to be ready before starting the API
+#    (cross-encoder model also downloads on first startup — allow time)
+# ---------------------------------------------------------------------------
+echo "Waiting for Weaviate at ${weaviate_host}:${weaviate_port}..."
+for i in $(seq 1 36); do
+  if curl -sf "http://${weaviate_host}:${weaviate_port}/v1/.well-known/ready" > /dev/null 2>&1; then
+    echo "Weaviate is ready after $((i * 10))s"
+    break
+  fi
+  if [ "$i" -eq 36 ]; then
+    echo "WARNING: Weaviate not ready after 360s — starting API anyway (systemd will retry)"
+  else
+    echo "Attempt $i/36 — retrying in 10s..."
+    sleep 10
+  fi
+done
+
+systemctl start stratum-api
+echo "stratum-api.service started"
 
 echo "=== Stratum: API bootstrap complete ==="
-echo ""
-echo "Next steps:"
-echo "  1. SSH:   ssh -i ~/.ssh/${project_name}.pem ec2-user@$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
-echo "  2. Clone: git clone <your-repo> /opt/stratum && chown -R stratum:stratum /opt/stratum"
-echo "  3. Keys:  edit /opt/stratum/.env and fill in ANTHROPIC and OPENAI keys"
-echo "  4. Deps:  cd /opt/stratum && sudo -u stratum python3.11 -m venv .venv && sudo -u stratum .venv/bin/pip install -e '.[api]'"
-echo "  5. Start: systemctl start stratum-api && journalctl -u stratum-api -f"
+echo "Monitor: journalctl -u stratum-api -f"
