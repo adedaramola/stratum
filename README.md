@@ -39,47 +39,204 @@ Document ingestion:
 | Layer | Default | Production | Rationale |
 |---|---|---|---|
 | Embedding | OpenAI text-embedding-3-small | BAAI/bge-large-en-v1.5 | Zero-infra default; BGE opt-in via `[local-embed]` |
-| Vector store | Chroma (in-process) | Weaviate 1.25.3 | Zero Docker for dev; HNSW tuning + gRPC for prod |
+| Vector store | Chroma (in-process) | Weaviate 1.27.0 | Zero Docker for dev; HNSW tuning + gRPC for prod |
 | Retrieval fusion | BM25 + ANN → RRF (K=60) | Same | Parameter-free, robust to miscalibrated retrievers |
 | Re-ranker | cross-encoder/ms-marco-MiniLM-L-6-v2 | Same | Strong precision at low latency (~50ms CPU) |
 | LLM | claude-sonnet-4-20250514 | Same | Citation-enforcing prompt, structured output |
+| API | FastAPI + uvicorn | Same | `/query` endpoint, `/health` liveness probe |
+| UI | Streamlit | Same | Chat interface with citation rendering |
+| Eval | DeepEval + Ollama judge | Same | Pytest-native, zero API cost for local judge |
 
 ---
 
-## Quickstart
+## Local Quickstart
+
+### Prerequisites
+- Python 3.11+
+- An Anthropic API key
+
+### 1. Clone and install
 
 ```bash
-# 1. Clone
-git clone https://github.com/your-handle/stratum.git && cd stratum
-
-# 2. Install (default: Chroma + OpenAI embeddings — zero Docker)
+git clone https://github.com/adedaramola/stratum.git
+cd stratum
 pip install -e ".[dev]"
-
-# 3. Configure secrets
-cp .env.example .env   # add STRATUM_ANTHROPIC_API_KEY and STRATUM_OPENAI_API_KEY
-
-# 4. Ingest documents
-stratum-ingest --source /path/to/your/docs/
-
-# 5. Query
-python -c "
-from rag import build_pipeline, get_settings
-pipeline = build_pipeline(get_settings())
-result = pipeline.query('What is the data retention policy?')
-print(result.answer)
-for c in result.citations:
-    print(f'  [{c.index}] {c.source} p.{c.page}')
-"
 ```
 
-### Switching to Weaviate
+### 2. Configure
+
+```bash
+# .env (create in the stratum/ directory)
+STRATUM_ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional — defaults to OpenAI embeddings if omitted
+STRATUM_OPENAI_API_KEY=sk-proj-...
+```
+
+### 3. Ingest documents
+
+```bash
+# Single PDF
+stratum-ingest --source /path/to/document.pdf
+
+# Directory of PDFs
+stratum-ingest --source /path/to/docs/
+
+# Web page
+stratum-ingest --source https://example.com/page
+```
+
+### 4. Start the API
+
+```bash
+make api
+# → FastAPI running at http://localhost:8000
+# → Docs at http://localhost:8000/docs
+```
+
+### 5. Start the UI
+
+```bash
+make ui
+# → Streamlit running at http://localhost:8501
+```
+
+### 6. Query via Python
+
+```python
+from rag.pipeline import build_pipeline
+from rag.config import get_settings
+
+pipeline = build_pipeline(get_settings())
+result = pipeline.query("What is the purpose of multi-head attention?")
+print(result.answer)
+for c in result.citations:
+    print(f"  [{c.index}] {c.source} p.{c.page}")
+```
+
+### 7. Query via API
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the purpose of multi-head attention?"}'
+```
+
+---
+
+## Optional Backends
+
+### Local embeddings (BGE — no API key required)
+
+```bash
+pip install -e ".[local-embed]"
+
+# .env
+STRATUM_EMBED_BACKEND=local
+```
+
+Requires ~2GB RAM. Uses `BAAI/bge-large-en-v1.5` (1024-dim).
+
+### Weaviate (production vector store)
+
+```bash
+make docker-up   # starts Weaviate on localhost:8080
+
+# .env
+STRATUM_STORE_BACKEND=weaviate
+```
+
+Re-ingest after switching backends — vectors are not portable between Chroma and Weaviate.
+
+### OpenAI eval judge
 
 ```bash
 # .env
-STRATUM_STORE_BACKEND=weaviate
+STRATUM_EVAL_JUDGE_BACKEND=openai
+STRATUM_OPENAI_API_KEY=sk-proj-...
+```
 
-make docker-up   # starts Weaviate on localhost:8080
-stratum-ingest --source /path/to/docs/
+Default judge is local Ollama (`llama3.1:8b`) at zero API cost.
+
+---
+
+## AWS Deployment
+
+The `terraform/` directory provisions a production-ready deployment on AWS.
+
+### Infrastructure
+
+```
+Internet
+   │
+   ▼
+ALB (stratum-prod-alb)
+   ├── :80   → FastAPI  (port 8000)
+   └── :8501 → Streamlit UI (port 8501)
+   │
+   ▼
+EC2 t3.medium (stratum-prod-api)
+   ├── stratum-api.service  (uvicorn, 2 workers)
+   └── stratum-ui.service   (streamlit)
+   │
+   ▼ (private network)
+EC2 t3.medium (stratum-prod-weaviate)
+   └── Weaviate 1.27.0 (Docker, 20GB EBS data volume)
+
+S3 (stratum-prod-docs-*)
+   └── Raw document storage
+```
+
+### Requirements
+
+- AWS CLI configured (`aws configure`)
+- Terraform >= 1.5
+- An SSH key pair created in AWS EC2
+
+### Deploy
+
+```bash
+cd terraform/
+
+# Copy and fill in secrets
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars — add API keys, key pair name, GitHub token
+
+terraform init
+terraform apply
+```
+
+Terraform outputs the live URLs when complete:
+
+```
+api_endpoint = "http://<alb-dns>/query"
+api_docs_url = "http://<alb-dns>/docs"
+ui_url       = "http://<alb-dns>:8501"
+```
+
+### Ingest documents on AWS
+
+```bash
+# 1. Upload PDF to S3
+aws s3 cp my-document.pdf s3://$(terraform output -raw documents_bucket_name)/raw/
+
+# 2. SSH into the API instance
+ssh -i ~/.ssh/<key>.pem ec2-user@$(terraform output -raw api_instance_public_ip)
+
+# 3. Download and ingest
+sudo aws s3 cp s3://<bucket>/raw/my-document.pdf /opt/stratum/data/raw/my-document.pdf
+sudo chown stratum:stratum /opt/stratum/data/raw/my-document.pdf
+sudo -u stratum bash -c 'cd /opt/stratum && /opt/stratum/.venv/bin/stratum-ingest \
+  --source /opt/stratum/data/raw/my-document.pdf'
+
+# 4. Restart services to pick up the new BM25 corpus
+sudo systemctl restart stratum-api stratum-ui
+```
+
+### Tear down
+
+```bash
+terraform destroy
 ```
 
 ---
@@ -92,9 +249,12 @@ stratum-ingest --source /path/to/docs/
 | `make lint` | ruff check + format check |
 | `make format` | ruff format + autofix |
 | `make typecheck` | mypy strict mode |
-| `make test-unit` | Unit tests (no network, no Docker) |
+| `make test-unit` | Unit tests (no network, no API keys) |
 | `make test-integration` | Integration tests (Chroma: no Docker; Weaviate: skipped without Docker) |
-| `make eval` | RAGAS evaluation gate |
+| `make eval` | DeepEval gate (requires Ollama + golden dataset) |
+| `make ingest SOURCE=path` | Ingest a document or directory |
+| `make api` | Start FastAPI on port 8000 |
+| `make ui` | Start Streamlit UI on port 8501 |
 | `make docker-up` | Start Weaviate service container |
 | `make ci` | Full CI: lint + typecheck + unit tests |
 | `make clean` | Remove build artefacts and caches |
@@ -111,47 +271,49 @@ stratum/
 │   ├── store/                # Chroma, Weaviate, factory
 │   ├── retrieval/            # HybridRetriever (BM25 + dense + RRF + rerank)
 │   ├── generation/           # CitationGroundedGenerator
-│   ├── evaluation/           # RAGASEvaluator
-│   ├── scripts/              # CLI entry points
+│   ├── evaluation/           # DeepEval harness + Ollama judge adapter
+│   ├── api/                  # FastAPI app (main.py)
+│   ├── scripts/              # CLI entry points (stratum-ingest)
 │   ├── config.py             # Pydantic Settings — one object rules all config
 │   ├── exceptions.py         # Domain exception hierarchy
 │   └── pipeline.py           # RAGPipeline + build_pipeline() factory
 ├── tests/
-│   ├── unit/                 # No network, no Docker — fast
+│   ├── unit/                 # No network, no Docker — fast (94 tests)
 │   ├── integration/          # Chroma: no Docker; Weaviate: skipped without Docker
-│   └── e2e/                  # RAGAS gate (weekly CI schedule)
+│   └── e2e/                  # DeepEval gate (weekly CI schedule)
+├── terraform/                # AWS infrastructure (EC2, ALB, Weaviate, S3)
 ├── docs/                     # ADRs and evaluation guide
 ├── config/                   # eval_thresholds.yaml
-└── data/golden/              # Golden QA pairs for RAGAS evaluation
+├── app.py                    # Streamlit chat UI
+└── data/golden/              # Golden QA pairs for DeepEval evaluation
 ```
 
 ---
 
-## Implementation Plan
+## Implementation Phases
 
 | Phase | Scope | Status |
 |---|---|---|
-| **Phase 1** | Core pipeline: ingestion, hybrid retrieval, citation generation, unit tests | ✅ Complete |
-| **Phase 2** | Golden dataset curation, RAGAS baseline establishment, eval gate activation | 🔄 In progress |
-| **Phase 3** | Learned fusion weights, streaming responses, multi-tenancy, prompt caching | 📋 Planned |
+| **Phase 1** | Foundation: config, exceptions, interfaces | ✅ Complete |
+| **Phase 2** | Stores, ingestion, retrieval, generation, unit tests | ✅ Complete |
+| **Phase 3** | FastAPI, Streamlit UI, AWS deployment, DeepEval gate | ✅ Complete |
+| **Phase 4** | Golden dataset curation, baseline establishment, eval gate activation | 🔄 In progress |
+| **Phase 5** | Learned fusion weights, streaming responses, multi-tenancy | 📋 Planned |
 
 ---
 
 ## Evaluation
 
-RAGAS evaluation runs **weekly** (Monday 06:00 UTC) and on manual trigger — not on every PR.
-This avoids LLM judge costs (~$0.02–0.10 per run) and prevents flakiness from judge variance (±0.03–0.05).
+DeepEval runs **weekly** (Monday 06:00 UTC) and on manual trigger — not on every PR.
+Uses a local Ollama judge by default (zero API cost). See [docs/evaluation.md](docs/evaluation.md).
 
 ```bash
+# Pull the judge model
+make ollama-pull
+
 # Run locally
 make eval
 ```
-
-See [docs/evaluation.md](docs/evaluation.md) for:
-- What each metric measures and what a low score tells you to fix
-- How to curate a golden QA dataset
-- How to establish empirical baselines before enabling the hard gate
-- How to interpret and tune thresholds
 
 ---
 
@@ -159,12 +321,13 @@ See [docs/evaluation.md](docs/evaluation.md) for:
 
 | # | Decision | Status |
 |---|---|---|
-| [ADR-001](docs/architecture.md#adr-001-hierarchical-chunking-over-flat-chunking) | Hierarchical chunking (parent/child) | Accepted |
-| [ADR-002](docs/architecture.md#adr-002-dual-store-backend-chroma-default-weaviate-production) | Dual store backend (Chroma + Weaviate) | Accepted |
-| [ADR-003](docs/architecture.md#adr-003-separate-parent-and-child-collections) | Separate parent/child collections | Accepted |
-| [ADR-004](docs/architecture.md#adr-004-bm25-corpus-co-located-with-vector-store) | BM25 corpus co-located with vector store | Accepted |
-| [ADR-005](docs/architecture.md#adr-005-drop-unstructured-as-a-dependency) | Drop `unstructured` dependency | Accepted |
-| [ADR-006](docs/architecture.md#adr-006-citation-grounding-enforced-at-generation-time) | Citation grounding at generation time | Accepted |
+| [ADR-001](docs/architecture.md#adr-001) | Hierarchical chunking (parent/child) | Accepted |
+| [ADR-002](docs/architecture.md#adr-002) | Dual store backend (Chroma + Weaviate) | Accepted |
+| [ADR-003](docs/architecture.md#adr-003) | Separate parent/child collections | Accepted |
+| [ADR-004](docs/architecture.md#adr-004) | BM25 corpus co-located with vector store | Accepted |
+| [ADR-005](docs/architecture.md#adr-005) | Drop `unstructured` dependency | Accepted |
+| [ADR-006](docs/architecture.md#adr-006) | Citation grounding enforced at generation time | Accepted |
+| [ADR-007](docs/architecture.md#adr-007) | DeepEval over RAGAS with local Ollama judge | Accepted |
 
 ---
 

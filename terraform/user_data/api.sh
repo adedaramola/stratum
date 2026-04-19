@@ -39,6 +39,7 @@ echo "Repo cloned to $REPO_DIR"
 # ---------------------------------------------------------------------------
 cat > "$REPO_DIR/.env" << 'ENVEOF'
 STRATUM_STORE_BACKEND=weaviate
+STRATUM_EMBED_BACKEND=local
 ENVEOF
 
 # Append interpolated values separately to avoid Terraform/bash quoting issues
@@ -59,7 +60,7 @@ echo ".env written"
 sudo -u stratum python3.11 -m venv "$REPO_DIR/.venv"
 sudo -u stratum "$REPO_DIR/.venv/bin/pip" install --quiet --upgrade pip
 sudo mkdir -p /opt/pip-tmp && chmod 1777 /opt/pip-tmp
-sudo -u stratum TMPDIR=/opt/pip-tmp "$REPO_DIR/.venv/bin/pip" install --no-cache-dir -e "$REPO_DIR[api,ui]"
+sudo -u stratum TMPDIR=/opt/pip-tmp "$REPO_DIR/.venv/bin/pip" install --no-cache-dir -e "$REPO_DIR[api,ui,local-embed]"
 echo "Dependencies installed"
 
 # ---------------------------------------------------------------------------

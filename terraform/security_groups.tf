@@ -7,7 +7,7 @@
 
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-${var.environment}-alb-sg"
-  description = "ALB: accept HTTP from anywhere; forward to API and UI"
+  description = "ALB: accept HTTP from anywhere; forward to API"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -45,7 +45,7 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group" "api" {
-  name        = "${var.project_name}-${var.environment}-api-sg"
+  name_prefix = "${var.project_name}-${var.environment}-api-sg-"
   description = "FastAPI: port 8000 from ALB; Streamlit: port 8501 from ALB; SSH from allowed CIDR"
   vpc_id      = aws_vpc.main.id
 
@@ -81,6 +81,13 @@ resource "aws_security_group" "api" {
   }
 
   tags = { Name = "${var.project_name}-${var.environment}-api-sg" }
+
+  # create_before_destroy prevents the DependencyViolation that occurs when
+  # Weaviate's ingress rules reference this SG by ID. Terraform creates the
+  # new SG first, updates Weaviate's rules, then deletes the old SG.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_security_group" "weaviate" {
