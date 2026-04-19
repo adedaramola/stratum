@@ -1,12 +1,18 @@
 # Evaluation Guide
 
-Stratum uses [RAGAS](https://docs.ragas.io/) as its evaluation framework.
+Stratum uses [DeepEval](https://docs.confident-ai.com/) as its evaluation framework.
 This guide explains what the metrics mean, how to build a golden dataset, and
 how to set defensible thresholds.
 
+**Why DeepEval over RAGAS:**
+- Pytest-native — metrics are assertions, not a separate runner
+- Self-explaining failures — each metric reports its diagnostic reasoning
+- Pluggable judge — defaults to local Ollama (zero API cost), OpenAI is opt-in
+- Stable API across minor versions (RAGAS has broken on minor bumps historically)
+
 ---
 
-## 1. What RAGAS Measures
+## 1. What DeepEval Measures
 
 ### Faithfulness
 Measures whether every claim in the generated answer is supported by the provided
@@ -24,7 +30,7 @@ focused and on-topic; a low-scoring answer drifts or adds irrelevant hedging.
 adjusting the system prompt to emphasise conciseness, or reducing `top_k_rerank` to
 limit context noise.
 
-### Context Precision
+### Contextual Precision
 Measures what fraction of the retrieved context passages are actually relevant to the
 question. High precision means your retriever is not including noise.
 
@@ -32,7 +38,7 @@ question. High precision means your retriever is not including noise.
 reducing `top_k_dense`, increasing `top_k_rerank` selectivity, or tuning the
 cross-encoder reranker model.
 
-### Context Recall
+### Contextual Recall
 Measures what fraction of the information needed to answer the question is present in
 the retrieved context. High recall means you're not missing relevant passages.
 
@@ -53,7 +59,7 @@ JSONL file at `data/golden/qa_pairs.jsonl`. One JSON object per line:
 
 Fields:
 - `question`: a realistic question a user would ask
-- `ground_truth`: the correct, complete answer (used by context_recall metric)
+- `ground_truth`: the correct, complete answer (used by contextual_recall metric)
 - `expected_sources`: list of source filenames that should be retrieved (optional, for debugging)
 
 ### Dataset Size
@@ -76,27 +82,44 @@ Fields:
 make eval
 ```
 
-This runs `pytest tests/e2e/test_ragas_eval.py -v --tb=short`.
+This runs `pytest tests/e2e/test_eval.py -v --tb=short`.
 
 Prerequisites:
 - `STRATUM_ANTHROPIC_API_KEY` set in `.env`
+- Ollama running locally with the judge model pulled: `make ollama-pull`
 - Golden dataset at `data/golden/qa_pairs.jsonl`
 - Documents ingested: `make ingest SOURCE=data/golden/docs/`
 
-Output: `reports/ragas_report.json` with scores, failures, and timestamp.
+Output: `reports/deepeval_report.json` with scores, failures, judge info, and timestamp.
+
+### Switching judge backends
+
+**Local Ollama (default — zero API cost):**
+```bash
+# Default — no env vars needed if Ollama is running
+make eval
+```
+
+**OpenAI (higher fidelity):**
+```bash
+STRATUM_EVAL_JUDGE_BACKEND=openai make eval
+```
+Requires `STRATUM_OPENAI_API_KEY` in `.env`. Uses `gpt-4o-mini` by default
+(`STRATUM_EVAL_JUDGE_OPENAI_MODEL` to override). Costs ~$0.02–0.10 per run at
+100 golden questions.
 
 ---
 
 ## 4. Interpreting Results
 
-| Failing metric       | Most likely cause                          | Where to look              |
-|----------------------|--------------------------------------------|----------------------------|
-| faithfulness         | Generator hallucinating                    | `SYSTEM_PROMPT`, `llm_model` |
-| answer_relevancy     | Answers too verbose or off-topic           | System prompt, `llm_max_tokens` |
-| context_precision    | Retriever returning irrelevant passages    | `top_k_dense`, reranker model |
-| context_recall       | Retriever missing relevant passages        | `top_k_dense`, chunk sizes |
+| Failing metric        | Most likely cause                          | Where to look                |
+|-----------------------|--------------------------------------------|------------------------------|
+| faithfulness          | Generator hallucinating                    | `SYSTEM_PROMPT`, `llm_model` |
+| answer_relevancy      | Answers too verbose or off-topic           | System prompt, `llm_max_tokens` |
+| contextual_precision  | Retriever returning irrelevant passages    | `top_k_dense`, reranker model |
+| contextual_recall     | Retriever missing relevant passages        | `top_k_dense`, chunk sizes   |
 
-If faithfulness and context_recall both fail simultaneously, the chunking strategy is
+If faithfulness and contextual_recall both fail simultaneously, the chunking strategy is
 likely the root cause — child chunks may be too small to carry sufficient signal.
 
 ---
@@ -130,6 +153,6 @@ Now threshold violations fail CI. `eval.yml` runs weekly and on manual trigger.
 
 ## Baseline Score Log
 
-| Date | faithfulness | answer_relevancy | context_precision | context_recall | Notes |
-|------|-------------|-----------------|-------------------|----------------|-------|
-| —    | —           | —               | —                 | —              | No baseline established yet |
+| Date | faithfulness | answer_relevancy | contextual_precision | contextual_recall | Judge | Notes |
+|------|-------------|-----------------|----------------------|-------------------|-------|-------|
+| —    | —           | —               | —                    | —                 | —     | No baseline established yet |

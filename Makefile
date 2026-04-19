@@ -31,7 +31,7 @@ test-e2e:
 test: test-unit
 
 eval:
-	pytest tests/e2e/test_ragas_eval.py -v --tb=short
+	pytest tests/e2e/test_eval.py -v --tb=short
 
 ingest:
 	stratum-ingest --source $(SOURCE)

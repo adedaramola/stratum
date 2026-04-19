@@ -43,8 +43,6 @@ local-embed = [
 eval = [
   "deepeval>=1.4.0",       # primary eval framework — pytest-native, local judge support
   "ollama>=0.3.0",         # client for local Ollama judge — zero API cost
-  "ragas==0.1.21",         # pinned — RAGAS has broken API on minor bumps historically
-  "datasets>=2.19.0",
   "pandas>=2.2.0",
 ]
 api = [
@@ -99,7 +97,7 @@ omit = [
   # FastAPI app — covered by e2e tests
   "src/rag/api/main.py",
   # Eval harness — e2e only, requires golden dataset and judge model
-  "src/rag/evaluation/ragas.py",
+  "src/rag/evaluation/deepeval_runner.py",
   # CLI entry point — integration-level, orchestrates all components
   "src/rag/scripts/ingest.py",
 ]
