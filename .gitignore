@@ -23,7 +23,7 @@ data/golden/*.txt
 terraform/*.tfvars
 !terraform/*.tfvars.example
 terraform/*.tfstate
-terraform/*.tfstate.backup
+terraform/*.tfstate*backup
 terraform/.terraform/
 terraform/.terraform.lock.hcl
 terraform/.infracost/
