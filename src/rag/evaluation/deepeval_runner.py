@@ -251,54 +251,54 @@ class DeepEvalRunner:
         except ImportError as exc:
             raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
 
-        metrics = [
-            FaithfulnessMetric(
-                threshold=self._thresholds.get("faithfulness", 0.85),
-                model=self._judge,
-                include_reason=True,
+        # Pair each metric with its score key — avoids relying on __name__ typing
+        named_metrics: list[tuple[str, Any]] = [
+            (
+                "faithfulness",
+                FaithfulnessMetric(
+                    threshold=self._thresholds.get("faithfulness", 0.85),
+                    model=self._judge,
+                    include_reason=True,
+                ),
             ),
-            AnswerRelevancyMetric(
-                threshold=self._thresholds.get("answer_relevancy", 0.80),
-                model=self._judge,
-                include_reason=True,
+            (
+                "answer_relevancy",
+                AnswerRelevancyMetric(
+                    threshold=self._thresholds.get("answer_relevancy", 0.80),
+                    model=self._judge,
+                    include_reason=True,
+                ),
             ),
-            ContextualPrecisionMetric(
-                threshold=self._thresholds.get("contextual_precision", 0.75),
-                model=self._judge,
-                include_reason=True,
+            (
+                "contextual_precision",
+                ContextualPrecisionMetric(
+                    threshold=self._thresholds.get("contextual_precision", 0.75),
+                    model=self._judge,
+                    include_reason=True,
+                ),
             ),
-            ContextualRecallMetric(
-                threshold=self._thresholds.get("contextual_recall", 0.70),
-                model=self._judge,
-                include_reason=True,
+            (
+                "contextual_recall",
+                ContextualRecallMetric(
+                    threshold=self._thresholds.get("contextual_recall", 0.70),
+                    model=self._judge,
+                    include_reason=True,
+                ),
             ),
         ]
 
-        # Measure each metric on each test case and collect scores
-        metric_scores: dict[str, list[float]] = {
-            "faithfulness": [],
-            "answer_relevancy": [],
-            "contextual_precision": [],
-            "contextual_recall": [],
-        }
-        metric_map = {
-            "FaithfulnessMetric": "faithfulness",
-            "AnswerRelevancyMetric": "answer_relevancy",
-            "ContextualPrecisionMetric": "contextual_precision",
-            "ContextualRecallMetric": "contextual_recall",
-        }
+        metric_scores: dict[str, list[float]] = {key: [] for key, _ in named_metrics}
 
         for test_case in test_cases:
-            for metric in metrics:
+            for metric_key, metric in named_metrics:
                 try:
                     metric.measure(test_case)
-                    key = metric_map.get(type(metric).__name__, type(metric).__name__)
                     if metric.score is not None:
-                        metric_scores[key].append(float(metric.score))
+                        metric_scores[metric_key].append(float(metric.score))
                 except Exception as exc:
                     logger.warning(
                         "metric_measure_failed",
-                        metric=type(metric).__name__,
+                        metric=metric_key,
                         error=str(exc),
                     )
 
