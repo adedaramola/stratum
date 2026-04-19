@@ -87,8 +87,16 @@ class WebLoader:
         Strips nav, footer, script, and style tags before extracting text.
         Raises DocumentLoadError on network or parse errors.
         """
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (compatible; Stratum-RAG/0.1; "
+                "+https://github.com/adedaramola/stratum)"
+            )
+        }
         try:
-            response = httpx.get(url, timeout=self._timeout, follow_redirects=True)
+            response = httpx.get(
+                url, timeout=self._timeout, follow_redirects=True, headers=headers
+            )
             response.raise_for_status()
 
             soup = BeautifulSoup(response.text, "html.parser")
