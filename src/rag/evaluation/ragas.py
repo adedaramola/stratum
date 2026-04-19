@@ -129,8 +129,8 @@ class RAGASEvaluator:
                 rows.append(
                     {
                         "question": question,
-                        "answer": result.get("answer", ""),
-                        "contexts": result.get("contexts", []),
+                        "answer": result.get("actual_output", ""),
+                        "contexts": result.get("retrieval_context", []),
                         "ground_truth": qa.get("ground_truth", ""),
                     }
                 )

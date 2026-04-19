@@ -50,8 +50,12 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1024
 
     # Eval settings
+    eval_judge_backend: Literal["ollama", "openai"] = "ollama"
+    eval_judge_model: str = "llama3.1:8b"  # used when backend=ollama
+    eval_judge_openai_model: str = "gpt-4o-mini"  # used when backend=openai
+    eval_ollama_base_url: str = "http://localhost:11434"
     eval_golden_path: Path = Path("data/golden/qa_pairs.jsonl")
-    eval_report_path: Path = Path("reports/ragas_report.json")
+    eval_report_path: Path = Path("reports/deepeval_report.json")
     # warn_only=True: threshold violations log as warnings rather than failing the test.
     # Set to False only after running eval >=3 times on a stable pipeline and
     # establishing empirical baselines. See docs/evaluation.md.

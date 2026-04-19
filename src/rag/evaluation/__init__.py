@@ -1,1 +1,1 @@
-"""Evaluation layer: RAGAS harness for automated quality gates."""
+"""Evaluation layer: DeepEval harness for automated quality gates (RAGAS available as opt-in)."""

@@ -28,11 +28,11 @@ class RAGPipeline:
         return self.generator.generate(question, chunks)
 
     def pipeline_fn(self, question: str) -> dict[str, Any]:
-        """RAGAS-compatible interface: returns {"answer": str, "contexts": list[str]}."""
+        """DeepEval-compatible interface: returns actual_output and retrieval_context keys."""
         result = self.query(question)
         return {
-            "answer": result.answer,
-            "contexts": [c.text for c in result.raw_context],
+            "actual_output": result.answer,
+            "retrieval_context": [c.text for c in result.raw_context],
         }
 
 

@@ -51,7 +51,7 @@ def test_pipeline_query_returns_cited_answer(mock_pipeline: RAGPipeline) -> None
 
 
 def test_pipeline_fn_returns_deepeval_compatible_dict(mock_pipeline: RAGPipeline) -> None:
-    """pipeline_fn() returns a dict with 'answer' and 'contexts' keys."""
+    """pipeline_fn() returns a dict with 'actual_output' and 'retrieval_context' keys."""
     from rag.interfaces.store import Chunk
 
     store = mock_pipeline.retriever._store  # type: ignore[attr-defined]
@@ -78,6 +78,6 @@ def test_pipeline_fn_returns_deepeval_compatible_dict(mock_pipeline: RAGPipeline
     mock_pipeline.retriever.build_index(store.load_bm25_corpus())
 
     out = mock_pipeline.pipeline_fn("What is retrieval?")
-    assert "answer" in out
-    assert "contexts" in out
-    assert isinstance(out["contexts"], list)
+    assert "actual_output" in out
+    assert "retrieval_context" in out
+    assert isinstance(out["retrieval_context"], list)
