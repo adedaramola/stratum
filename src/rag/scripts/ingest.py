@@ -22,7 +22,7 @@ from rag.store.factory import get_store
 logger = structlog.get_logger(__name__)
 
 
-def _resolve_sources(source: str) -> list[tuple[Any, str]]:
+def _resolve_sources(source: str) -> list[tuple[Any, Any]]:
     """Return a list of (loader, path_or_url) pairs from the given source argument.
 
     Accepts:
@@ -36,12 +36,12 @@ def _resolve_sources(source: str) -> list[tuple[Any, str]]:
         return [(WebLoader(), source)]
 
     if path.is_file() and path.suffix.lower() == ".pdf":
-        return [(PDFLoader(), source)]
+        return [(PDFLoader(), path)]
 
     if path.is_dir():
-        pairs: list[tuple[Any, str]] = []
+        pairs: list[tuple[Any, Any]] = []
         for pdf in sorted(path.rglob("*.pdf")):
-            pairs.append((PDFLoader(), str(pdf)))
+            pairs.append((PDFLoader(), pdf))
         if not pairs:
             logger.warning("no_pdfs_found", directory=source)
         return pairs
