@@ -77,9 +77,9 @@ and hard to detect (results look plausible but are wrong).
 
 **Decision:**
 Store parent chunks in a dedicated collection with no vector index
-(`DocumentChunkParent` in Weaviate, `{collection_name}_parents` in Chroma). Parents are
-fetch-by-ID only and cannot appear in ANN results by construction — there is no vector
-index to search and no filter that could be omitted.
+(`DocumentChunkParent` in Weaviate, `{collection_name}_parents` in Chroma local dev).
+Parents are fetch-by-ID only and cannot appear in ANN results by construction — there is
+no vector index to search and no filter that could be omitted.
 
 **Consequences:**
 - ✅ The filter-omission bug is architecturally impossible
@@ -102,9 +102,10 @@ obligation (the file can go out of sync with the vector index if ingestion fails
 
 **Decision:**
 `DocumentStoreProtocol` includes `store_bm25_corpus` and `load_bm25_corpus` methods.
-Both Chroma (JSON sidecar) and Weaviate (singleton collection) persist the corpus
-alongside their vector data. `HybridRetriever` calls `load_bm25_corpus()` in `__init__`,
-restoring both retrieval indexes automatically on startup with no manual rebuild step.
+Both Chroma (JSON sidecar at `{persist_dir}/bm25_corpus.json`, local dev) and Weaviate
+(singleton `WeaviateCorpus` collection, production) persist the corpus alongside their
+vector data. `HybridRetriever` calls `load_bm25_corpus()` in `__init__`, restoring both
+retrieval indexes automatically on startup with no manual rebuild step.
 
 **Consequences:**
 - ✅ Single source of truth for all retrieval state
@@ -161,3 +162,36 @@ uncited claims a detectable, raiseable error rather than silent data loss.
 - ✅ The grounding contract is explicit and version-controlled (in `SYSTEM_PROMPT`)
 - ❌ Adds a prompt-compliance failure mode requiring prompt iteration
 - ❌ Slightly constrains answer style toward shorter, more structured responses
+
+---
+
+## ADR-007: DeepEval Over RAGAS With a Local Ollama Judge
+
+**Status:** Accepted
+
+**Context:**
+RAGAS pinning is fragile — the API has broken on minor version bumps historically,
+requiring explicit pins (`ragas==0.1.21`) that fall behind security fixes. Additionally,
+RAGAS uses a hosted LLM judge for faithfulness and answer relevancy metrics. At 200 golden
+questions × 4 metrics × weekly runs, hosted-model costs accumulate quickly for a portfolio
+project. RAGAS also runs as a separate runner, not as pytest assertions, which means
+failures don't integrate naturally with CI tooling.
+
+**Decision:**
+Use DeepEval with a local Ollama judge (`llama3.1:8b`) as the default. DeepEval is
+pytest-native (metrics are assertions, failures include diagnostic reasoning), has a stable
+API across minor versions, and supports pluggable judge backends. The local Ollama judge
+runs at zero API cost. `STRATUM_EVAL_JUDGE_BACKEND=openai` switches to GPT-4o-mini for
+higher-fidelity scoring when needed.
+
+Four metrics: `FaithfulnessMetric`, `AnswerRelevancyMetric`,
+`ContextualPrecisionMetric`, `ContextualRecallMetric`. Thresholds start in warn-only mode
+(`STRATUM_EVAL_WARN_ONLY=true`) until empirical baselines are established.
+
+**Consequences:**
+- ✅ Zero API cost for weekly eval runs
+- ✅ Pytest-native — failures are first-class CI failures with diagnostic output
+- ✅ Stable API — no fragile version pinning required
+- ✅ Self-explaining failures — each metric reports why it failed
+- ❌ Local Ollama judge agreement with GPT-4o-mini is ~85%, not 100%
+- ❌ Adds Ollama as a CI service container dependency
