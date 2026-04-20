@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # establishing empirical baselines. See docs/evaluation.md.
     eval_warn_only: bool = True
 
+    # Observability (Langfuse) — tracing is disabled when keys are absent
+    langfuse_public_key: SecretStr | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"
+
     # Secrets
     anthropic_api_key: SecretStr
     openai_api_key: SecretStr | None = None  # required when embed_backend="openai"

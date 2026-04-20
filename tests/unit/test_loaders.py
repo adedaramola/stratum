@@ -1,4 +1,4 @@
-"""Unit tests for PDF and web document loaders."""
+"""Unit tests for PDF, text, docx, and web document loaders."""
 
 from __future__ import annotations
 
@@ -6,9 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from rag.exceptions import DocumentLoadError
-from rag.ingestion.loaders import PDFLoader, WebLoader
+from rag.ingestion.loaders import DocxLoader, PDFLoader, TextLoader, WebLoader
 
 # ---------------------------------------------------------------------------
 # WebLoader
@@ -118,3 +117,133 @@ def test_pdf_loader_error_raises_document_load_error() -> None:
         pytest.raises(DocumentLoadError),
     ):
         PDFLoader().load(Path("missing.pdf"))
+
+
+# ---------------------------------------------------------------------------
+# TextLoader
+# ---------------------------------------------------------------------------
+
+
+def test_text_loader_returns_document(tmp_path: Path) -> None:
+    f = tmp_path / "notes.txt"
+    f.write_text("Hello, world!", encoding="utf-8")
+    docs = TextLoader().load(f)
+    assert len(docs) == 1
+    assert docs[0].text == "Hello, world!"
+    assert docs[0].metadata["source"] == "notes.txt"
+
+
+def test_text_loader_markdown_file(tmp_path: Path) -> None:
+    f = tmp_path / "README.md"
+    f.write_text("# Title\n\nSome content.", encoding="utf-8")
+    docs = TextLoader().load(f)
+    assert "Title" in docs[0].text
+
+
+def test_text_loader_empty_file_returns_empty_list(tmp_path: Path) -> None:
+    f = tmp_path / "empty.txt"
+    f.write_text("   ", encoding="utf-8")
+    docs = TextLoader().load(f)
+    assert docs == []
+
+
+def test_text_loader_error_raises_document_load_error(tmp_path: Path) -> None:
+    missing = tmp_path / "nonexistent.txt"
+    with pytest.raises(DocumentLoadError) as exc_info:
+        TextLoader().load(missing)
+    assert "nonexistent.txt" in exc_info.value.source
+
+
+# ---------------------------------------------------------------------------
+# DocxLoader
+# ---------------------------------------------------------------------------
+
+
+def _mock_para(text: str) -> MagicMock:
+    m = MagicMock()
+    m.text = text
+    return m
+
+
+def _mock_docx_doc(paragraphs: list[str], table_cells: list[str] | None = None) -> MagicMock:
+    """Build a mock python-docx Document object."""
+    mock_doc = MagicMock()
+    mock_doc.paragraphs = [_mock_para(p) for p in paragraphs]
+
+    if table_cells:
+        mock_cell = MagicMock()
+        mock_cell.text = table_cells[0]
+        mock_row = MagicMock()
+        mock_row.cells = [mock_cell]
+        mock_table = MagicMock()
+        mock_table.rows = [mock_row]
+        mock_doc.tables = [mock_table]
+    else:
+        mock_doc.tables = []
+
+    return mock_doc
+
+
+def test_docx_loader_returns_document(tmp_path: Path) -> None:
+    p = tmp_path / "report.docx"
+    p.write_bytes(b"placeholder")
+    mock_doc = _mock_docx_doc(["First paragraph.", "Second paragraph."])
+    mock_docx_module = MagicMock()
+    mock_docx_module.Document.return_value = mock_doc
+
+    with patch.dict("sys.modules", {"docx": mock_docx_module}):
+        docs = DocxLoader().load(p)
+
+    assert len(docs) == 1
+    assert "First paragraph." in docs[0].text
+    assert "Second paragraph." in docs[0].text
+    assert docs[0].metadata["source"] == "report.docx"
+
+
+def test_docx_loader_includes_table_cells(tmp_path: Path) -> None:
+    p = tmp_path / "data.docx"
+    p.write_bytes(b"placeholder")
+    mock_doc = _mock_docx_doc(["Para text."], table_cells=["Cell value."])
+    mock_docx_module = MagicMock()
+    mock_docx_module.Document.return_value = mock_doc
+
+    with patch.dict("sys.modules", {"docx": mock_docx_module}):
+        docs = DocxLoader().load(p)
+
+    assert "Cell value." in docs[0].text
+
+
+def test_docx_loader_empty_document_returns_empty_list(tmp_path: Path) -> None:
+    p = tmp_path / "empty.docx"
+    p.write_bytes(b"placeholder")
+    mock_doc = _mock_docx_doc(["", "   "])
+    mock_docx_module = MagicMock()
+    mock_docx_module.Document.return_value = mock_doc
+
+    with patch.dict("sys.modules", {"docx": mock_docx_module}):
+        docs = DocxLoader().load(p)
+
+    assert docs == []
+
+
+def test_docx_loader_missing_module_raises_document_load_error(tmp_path: Path) -> None:
+    p = tmp_path / "test.docx"
+    p.write_bytes(b"placeholder")
+    with (
+        patch.dict("sys.modules", {"docx": None}),
+        pytest.raises(DocumentLoadError),
+    ):
+        DocxLoader().load(p)
+
+
+def test_docx_loader_read_error_raises_document_load_error(tmp_path: Path) -> None:
+    p = tmp_path / "corrupt.docx"
+    p.write_bytes(b"placeholder")
+    mock_docx_module = MagicMock()
+    mock_docx_module.Document.side_effect = RuntimeError("corrupt file")
+
+    with (
+        patch.dict("sys.modules", {"docx": mock_docx_module}),
+        pytest.raises(DocumentLoadError),
+    ):
+        DocxLoader().load(p)
