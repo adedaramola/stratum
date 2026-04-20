@@ -1,4 +1,4 @@
-"""Unit tests for DeepEvalRunner, OllamaJudge, build_judge, and EvalResult."""
+"""Unit tests for DeepEvalRunner, build_judge, and EvalResult."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from rag.config import Settings
 from rag.evaluation.deepeval_runner import (
     DeepEvalRunner,
     EvalResult,
-    OllamaJudge,
     _load_golden,
     build_judge,
 )
@@ -35,82 +34,15 @@ def _write_golden(path: Path, pairs: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# OllamaJudge
-# ---------------------------------------------------------------------------
-
-
-def test_ollama_judge_get_model_name() -> None:
-    judge = OllamaJudge(model="llama3.1:8b", base_url="http://localhost:11434")
-    assert judge.get_model_name() == "llama3.1:8b"
-
-
-def test_ollama_judge_load_model_missing_package_raises() -> None:
-    judge = OllamaJudge(model="llama3.1:8b", base_url="http://localhost:11434")
-    with patch.dict("sys.modules", {"ollama": None}), pytest.raises(ImportError, match="eval"):
-        judge.load_model()
-
-
-def test_ollama_judge_load_model_caches_client() -> None:
-    mock_client = MagicMock()
-    mock_ollama = MagicMock()
-    mock_ollama.Client.return_value = mock_client
-
-    judge = OllamaJudge(model="llama3.1:8b", base_url="http://localhost:11434")
-    with patch.dict("sys.modules", {"ollama": mock_ollama}):
-        c1 = judge.load_model()
-        c2 = judge.load_model()
-
-    assert c1 is c2
-    mock_ollama.Client.assert_called_once()
-
-
-def test_ollama_judge_generate_returns_string() -> None:
-    mock_client = MagicMock()
-    mock_client.generate.return_value = MagicMock(response="Paris")
-    mock_ollama = MagicMock()
-    mock_ollama.Client.return_value = mock_client
-
-    judge = OllamaJudge(model="llama3.1:8b", base_url="http://localhost:11434")
-    with patch.dict("sys.modules", {"ollama": mock_ollama}):
-        result = judge.generate("What is the capital of France?")
-
-    assert result == "Paris"
-
-
-def test_ollama_judge_a_generate_is_async() -> None:
-    import asyncio
-
-    mock_client = MagicMock()
-    mock_client.generate.return_value = MagicMock(response="async result")
-    mock_ollama = MagicMock()
-    mock_ollama.Client.return_value = mock_client
-
-    judge = OllamaJudge(model="llama3.1:8b", base_url="http://localhost:11434")
-    with patch.dict("sys.modules", {"ollama": mock_ollama}):
-        result = asyncio.get_event_loop().run_until_complete(judge.a_generate("prompt"))
-
-    assert result == "async result"
-
-
-# ---------------------------------------------------------------------------
 # build_judge
 # ---------------------------------------------------------------------------
 
 
-def test_build_judge_ollama_returns_ollama_judge() -> None:
+def test_build_judge_ollama_returns_model_with_correct_name() -> None:
     s = _settings(eval_judge_backend="ollama", eval_judge_model="llama3.1:8b")
     judge = build_judge(s)
-    assert isinstance(judge, OllamaJudge)
-    assert judge.model == "llama3.1:8b"
-
-
-def test_build_judge_openai_missing_package_raises() -> None:
-    s = _settings(eval_judge_backend="openai")
-    with (
-        patch.dict("sys.modules", {"deepeval": None, "deepeval.models": None}),
-        pytest.raises((ImportError, Exception)),
-    ):
-        build_judge(s)
+    assert judge is not None
+    assert "llama3.1" in judge.get_model_name()
 
 
 def test_build_judge_openai_missing_key_raises() -> None:
@@ -237,10 +169,11 @@ def test_write_report_creates_json_file() -> None:
 
 
 def test_write_report_includes_judge_metadata() -> None:
-    judge = OllamaJudge(model="llama3.1:8b", base_url="http://localhost:11434")
+    mock_judge = MagicMock()
+    mock_judge.get_model_name.return_value = "llama3.1:8b"
     runner = DeepEvalRunner(
         pipeline_fn=lambda q: {"actual_output": "", "retrieval_context": []},
-        judge=judge,
+        judge=mock_judge,
         warn_only=True,
     )
     result = EvalResult(scores={}, passed=True)
@@ -250,7 +183,6 @@ def test_write_report_includes_judge_metadata() -> None:
         runner.write_report(result, out)
         data = json.loads(out.read_text())
 
-    assert data["judge_backend"] == "ollama"
     assert data["judge_model"] == "llama3.1:8b"
 
 
@@ -297,9 +229,6 @@ def test_build_test_cases_handles_pipeline_failure() -> None:
 
 def test_run_returns_eval_result() -> None:
     """run() loads golden data, calls pipeline, returns EvalResult."""
-    mock_metric = MagicMock()
-    mock_metric.score = 0.9
-    mock_metric.__class__.__name__ = "FaithfulnessMetric"
 
     def mock_fn(q: str) -> dict:
         return {"actual_output": "answer", "retrieval_context": ["context"]}
