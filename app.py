@@ -15,6 +15,7 @@ Then run this app:
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import httpx
 import streamlit as st
@@ -53,7 +54,7 @@ if "api_ok" not in st.session_state:
 def check_backend() -> bool:
     try:
         r = httpx.get(f"{API_URL}/health", timeout=3.0)
-        return r.status_code == 200
+        return bool(r.status_code == 200)
     except Exception:
         return False
 
@@ -63,15 +64,26 @@ if not st.session_state.api_ok:
 
 if not st.session_state.api_ok:
     st.error(
-        "**Backend not reachable.** Start it with:\n"
-        "```\nuvicorn rag.api.main:app --reload\n```",
+        "**Backend not reachable.** Start it with:\n```\nuvicorn rag.api.main:app --reload\n```",
         icon="🔌",
     )
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Sidebar — document info & controls
+# Sidebar — document info, metrics, controls
 # ---------------------------------------------------------------------------
+
+
+def fetch_metrics() -> dict[str, Any] | None:
+    """Fetch /metrics from the backend. Returns None on any failure."""
+    try:
+        r = httpx.get(f"{API_URL}/metrics", timeout=3.0)
+        r.raise_for_status()
+        result: dict[str, Any] = r.json()
+        return result
+    except Exception:
+        return None
+
 
 with st.sidebar:
     st.header("Stratum")
@@ -79,6 +91,39 @@ with st.sidebar:
         "Ask questions about your ingested documents. "
         "Every answer includes citations so you can verify the source."
     )
+    st.divider()
+
+    # Operational metrics
+    st.markdown("**System metrics**")
+    m = fetch_metrics()
+    if m is None:
+        st.caption("Metrics unavailable")
+    else:
+        total = m.get("total_queries", 0)
+        p95 = m.get("p95_latency_ms")
+        cost = m.get("avg_cost_usd")
+        coverage = m.get("citation_coverage")
+
+        col1, col2 = st.columns(2)
+        col1.metric("Queries", total)
+        col2.metric(
+            "P95 latency",
+            f"{p95:.0f} ms" if p95 is not None else "—",
+            help="Computed after 20+ queries",
+        )
+
+        col3, col4 = st.columns(2)
+        col3.metric(
+            "Avg cost",
+            f"${cost:.4f}" if cost is not None else "—",
+            help="USD per query (input + output tokens)",
+        )
+        col4.metric(
+            "Citation rate",
+            f"{coverage * 100:.0f}%" if coverage is not None else "—",
+            help="Fraction of queries returning ≥1 citation",
+        )
+
     st.divider()
     st.markdown("**Stack**")
     st.markdown(
@@ -116,46 +161,46 @@ if question := st.chat_input("Ask a question about your documents…"):
         st.markdown(question)
 
     # Call the backend
-    with st.chat_message("assistant"):
-        with st.spinner("Retrieving and generating…"):
-            try:
-                response = httpx.post(
-                    f"{API_URL}/query",
-                    json={"question": question},
-                    timeout=60.0,
-                )
-                response.raise_for_status()
-                data = response.json()
+    with st.chat_message("assistant"), st.spinner("Retrieving and generating…"):
+        try:
+            response = httpx.post(
+                f"{API_URL}/query",
+                json={"question": question},
+                timeout=60.0,
+            )
+            response.raise_for_status()
+            data = response.json()
 
-                answer = data["answer"]
-                citations = data.get("citations", [])
-                context_chunks = data.get("context_chunks", 0)
+            answer = data["answer"]
+            citations = data.get("citations", [])
+            context_chunks = data.get("context_chunks", 0)
 
-                st.markdown(answer)
+            st.markdown(answer)
 
-                if citations:
-                    with st.expander(f"📎 {len(citations)} source(s) · {context_chunks} chunks retrieved"):
-                        for c in citations:
-                            page_label = f" · p.{c['page']}" if c.get("page") is not None else ""
-                            st.markdown(f"**[{c['index']}]** `{c['source']}`{page_label}")
+            if citations:
+                label = f"📎 {len(citations)} source(s) · {context_chunks} chunks retrieved"
+                with st.expander(label):
+                    for c in citations:
+                        page_label = f" · p.{c['page']}" if c.get("page") is not None else ""
+                        st.markdown(f"**[{c['index']}]** `{c['source']}`{page_label}")
 
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": answer,
-                        "citations": citations,
-                    }
-                )
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                    "citations": citations,
+                }
+            )
 
-            except httpx.HTTPStatusError as exc:
-                error_msg = f"API error {exc.response.status_code}: {exc.response.text}"
-                st.error(error_msg)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": f"❌ {error_msg}", "citations": []}
-                )
-            except Exception as exc:
-                error_msg = f"Could not reach backend: {exc}"
-                st.error(error_msg)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": f"❌ {error_msg}", "citations": []}
-                )
+        except httpx.HTTPStatusError as exc:
+            error_msg = f"API error {exc.response.status_code}: {exc.response.text}"
+            st.error(error_msg)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": f"❌ {error_msg}", "citations": []}
+            )
+        except Exception as exc:
+            error_msg = f"Could not reach backend: {exc}"
+            st.error(error_msg)
+            st.session_state.messages.append(
+                {"role": "assistant", "content": f"❌ {error_msg}", "citations": []}
+            )

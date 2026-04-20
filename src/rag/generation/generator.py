@@ -13,7 +13,7 @@ import re
 
 import structlog
 
-from rag.exceptions import CitationGroundingError, GenerationError
+from rag.exceptions import GenerationError
 from rag.interfaces.generator import CitationRef, CitedAnswer
 from rag.interfaces.retriever import RetrievedChunk
 
@@ -77,15 +77,30 @@ class CitationGroundedGenerator:
             raise GenerationError(f"Claude API call failed: {exc}") from exc
 
         citations = self._extract_citations(raw_answer, chunks)
+        input_tokens = getattr(response.usage, "input_tokens", 0)
+        output_tokens = getattr(response.usage, "output_tokens", 0)
 
         if not citations:
-            raise CitationGroundingError(
-                answer=raw_answer,
-                reason="No [src N] citations found — possible hallucination",
+            log.warning(
+                "no_citations_in_answer",
+                hint="Model answered without [src N] markers — answer returned uncited",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
-
-        log.info("generation_complete", citations=len(citations))
-        return CitedAnswer(answer=raw_answer, citations=citations, raw_context=chunks)
+        else:
+            log.info(
+                "generation_complete",
+                citations=len(citations),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        return CitedAnswer(
+            answer=raw_answer,
+            citations=citations,
+            raw_context=chunks,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
     @staticmethod
     def _build_context_block(chunks: list[RetrievedChunk]) -> str:

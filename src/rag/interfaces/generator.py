@@ -24,6 +24,8 @@ class CitedAnswer:
     answer: str
     citations: list[CitationRef] = field(default_factory=list)
     raw_context: list[RetrievedChunk] = field(default_factory=list)
+    input_tokens: int = 0  # LLM prompt tokens consumed
+    output_tokens: int = 0  # LLM completion tokens produced
 
 
 @runtime_checkable
