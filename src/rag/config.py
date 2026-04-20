@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     overlap_sentences: int = 2
 
     # LLM settings
-    llm_model: str = "claude-sonnet-4-20250514"
+    llm_model: str = "claude-sonnet-4-6"
     llm_max_tokens: int = 1024
 
     # Eval settings

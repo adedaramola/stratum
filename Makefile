@@ -31,7 +31,7 @@ test-e2e:
 test: test-unit
 
 eval:
-	pytest tests/e2e/test_eval.py -v --tb=short
+	pytest tests/e2e/test_eval.py -v --tb=short --no-cov
 
 ingest:
 	stratum-ingest --source $(SOURCE)

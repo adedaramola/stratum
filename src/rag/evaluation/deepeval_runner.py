@@ -22,7 +22,6 @@ Threshold strategy:
 
 from __future__ import annotations
 
-import asyncio
 import datetime
 import json
 from collections.abc import Callable
@@ -56,71 +55,29 @@ class EvalResult:
 
 
 # ---------------------------------------------------------------------------
-# Ollama judge adapter
-# ---------------------------------------------------------------------------
-
-
-class OllamaJudge:
-    """DeepEvalBaseLLM adapter for a locally running Ollama model.
-
-    Satisfies the DeepEval LLM interface so any Ollama model can act as a
-    judge — zero API cost, works offline after the model is pulled.
-    """
-
-    def __init__(self, model: str, base_url: str) -> None:
-        self.model = model
-        self.base_url = base_url
-        self._client: Any = None
-
-    def load_model(self) -> Any:
-        """Return (and cache) an ollama.Client instance."""
-        if self._client is None:
-            try:
-                import ollama  # noqa: PLC0415
-            except ImportError as exc:
-                raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
-            self._client = ollama.Client(host=self.base_url)
-        return self._client
-
-    def generate(self, prompt: str) -> str:
-        """Synchronous generation — called by DeepEval metrics."""
-        client = self.load_model()
-        response = client.generate(model=self.model, prompt=prompt)
-        return str(response.response)
-
-    async def a_generate(self, prompt: str) -> str:
-        """Async wrapper — DeepEval calls this in async contexts."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.generate, prompt)
-
-    def get_model_name(self) -> str:
-        """Return the model identifier string."""
-        return self.model
-
-
-# ---------------------------------------------------------------------------
 # Judge factory
 # ---------------------------------------------------------------------------
 
 
-def build_judge(settings: Settings) -> OllamaJudge | Any:
+def build_judge(settings: Settings) -> Any:
     """Return the configured judge model instance.
 
-    Returns OllamaJudge (zero cost) by default; GPTModel when
+    Returns DeepEval's native OllamaModel (zero cost) by default; GPTModel when
     STRATUM_EVAL_JUDGE_BACKEND=openai for higher-fidelity scoring.
     """
+    try:
+        from deepeval.models import GPTModel, OllamaModel  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
+
     if settings.eval_judge_backend == "ollama":
-        return OllamaJudge(
+        return OllamaModel(
             model=settings.eval_judge_model,
             base_url=settings.eval_ollama_base_url,
         )
     if settings.eval_judge_backend == "openai":
         if settings.openai_api_key is None:
             raise ValueError("STRATUM_OPENAI_API_KEY is required when eval_judge_backend=openai")
-        try:
-            from deepeval.models import GPTModel  # noqa: PLC0415
-        except ImportError as exc:
-            raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
         return GPTModel(
             model=settings.eval_judge_openai_model,
             api_key=settings.openai_api_key.get_secret_value(),
@@ -194,7 +151,7 @@ class DeepEvalRunner:
         judge_model = "none"
         if self._judge is not None:
             judge_model = self._judge.get_model_name()
-            judge_backend = "ollama" if isinstance(self._judge, OllamaJudge) else "openai"
+            judge_backend = type(self._judge).__name__
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         report = {

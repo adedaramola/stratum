@@ -56,7 +56,18 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Pull Ollama judge model
-        run: ollama pull llama3.1:8b
+        # The Ollama CLI is not installed on the runner — pull via the container's HTTP API
+        run: |
+          curl -s -X POST http://localhost:11434/api/pull \
+            -H "Content-Type: application/json" \
+            -d '{"name": "llama3.1:8b"}' | tail -1
+
+      - name: Download eval documents
+        # PDFs are gitignored — download the golden source document for CI eval
+        run: |
+          mkdir -p data/golden/docs
+          curl -sL "https://arxiv.org/pdf/1706.03762" \
+            -o data/golden/docs/attention_is_all_you_need.pdf
 
       - name: Ingest golden documents
         run: stratum-ingest --source data/golden/docs/ --env ci
@@ -67,7 +78,7 @@ jobs:
           STRATUM_OPENAI_API_KEY: ${{ secrets.STRATUM_OPENAI_API_KEY }}
 
       - name: Run DeepEval gate
-        run: pytest tests/e2e/test_eval.py -v --tb=short
+        run: pytest tests/e2e/test_eval.py -v --tb=short --no-cov
         env:
           STRATUM_STORE_BACKEND: weaviate
           STRATUM_EMBED_BACKEND: openai
@@ -106,4 +117,4 @@ jobs:
           print()
           print(f'**Passed:** {r.get(\"passed\", False)}')
           print(f'**Judge:** {r.get(\"judge_backend\", \"\")} / {r.get(\"judge_model\", \"\")}')
-          " >> \$GITHUB_STEP_SUMMARY
+          " >> $GITHUB_STEP_SUMMARY

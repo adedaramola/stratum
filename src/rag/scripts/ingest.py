@@ -56,8 +56,11 @@ def _resolve_sources(source: str) -> list[tuple[Any, Any]]:
             for file in sorted(path.rglob(f"*{ext}")):
                 pairs.append((loader_cls(), file))
         if not pairs:
-            logger.warning("no_supported_files_found", directory=source,
-                           supported=list(_EXTENSION_LOADERS.keys()))
+            logger.warning(
+                "no_supported_files_found",
+                directory=source,
+                supported=list(_EXTENSION_LOADERS.keys()),
+            )
         return pairs
 
     logger.error("unknown_source_type", source=source)
