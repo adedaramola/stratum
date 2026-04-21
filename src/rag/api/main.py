@@ -164,13 +164,13 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 
 
-@app.get("/health", status_code=status.HTTP_200_OK)  # type: ignore[misc]
+@app.get("/health", status_code=status.HTTP_200_OK)
 def health() -> dict[str, str]:
     """Liveness probe — used by the ALB health check."""
     return {"status": "ok"}
 
 
-@app.post("/query", response_model=QueryResponse)  # type: ignore[misc]
+@app.post("/query", response_model=QueryResponse)
 def query(body: QueryRequest) -> QueryResponse:
     """Run a question through the RAG pipeline and return a cited answer."""
     if _pipeline is None:
@@ -219,7 +219,7 @@ def query(body: QueryRequest) -> QueryResponse:
         ) from exc
 
 
-@app.get("/metrics", response_model=MetricsResponse)  # type: ignore[misc]
+@app.get("/metrics", response_model=MetricsResponse)
 def metrics() -> MetricsResponse:
     """Operational metrics: P95 latency, average cost per request, citation coverage.
 

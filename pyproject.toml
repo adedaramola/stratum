@@ -84,6 +84,12 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 strict = true
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "rag.api.main"
+# FastAPI decorators are dynamically typed; suppressing the resulting
+# "untyped decorator" noise without relying on version-sensitive type: ignore comments.
+disallow_untyped_decorators = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
