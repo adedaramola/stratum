@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from rag.exceptions import DocumentLoadError
 from rag.ingestion.loaders import DocxLoader, PDFLoader, TextLoader, WebLoader
 

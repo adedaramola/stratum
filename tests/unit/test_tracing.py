@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
+
 from rag.config import Settings
 from rag.tracing import _LangfuseSpan, _LangfuseTracer, _NoOpSpan, _NoOpTracer, get_tracer
 
