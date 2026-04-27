@@ -17,6 +17,7 @@ jobs:
   deepeval:
     name: DeepEval Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     services:
       ollama:
@@ -72,7 +73,7 @@ jobs:
         run: |
           curl -s -X POST http://localhost:11434/api/pull \
             -H "Content-Type: application/json" \
-            -d '{"name": "llama3.1:8b"}' | tail -1
+            -d '{"name": "llama3.2:1b"}' | tail -1
 
       - name: Download eval documents
         # PDFs are gitignored — download the golden source document for CI eval
@@ -98,7 +99,7 @@ jobs:
           STRATUM_OPENAI_API_KEY: ${{ secrets.STRATUM_OPENAI_API_KEY }}
           STRATUM_EVAL_WARN_ONLY: "true"
           STRATUM_EVAL_JUDGE_BACKEND: ollama
-          STRATUM_EVAL_JUDGE_MODEL: llama3.1:8b
+          STRATUM_EVAL_JUDGE_MODEL: llama3.2:1b
 
       - name: Upload DeepEval report
         if: always()
