@@ -3,5 +3,5 @@
 # before setting STRATUM_EVAL_WARN_ONLY=false.
 faithfulness: 0.85
 answer_relevancy: 0.80
-context_precision: 0.75
-context_recall: 0.70
+contextual_precision: 0.75
+contextual_recall: 0.70
