@@ -20,13 +20,6 @@ jobs:
     timeout-minutes: 60
 
     services:
-      ollama:
-        image: ollama/ollama:latest
-        ports:
-          - "11434:11434"
-        # No --health-cmd: Ollama image does not have curl/wget.
-        # Readiness is checked from the runner in the "Wait for Ollama" step.
-
       weaviate:
         image: cr.weaviate.io/semitechnologies/weaviate:1.27.0
         ports:
@@ -58,23 +51,6 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
-      - name: Wait for Ollama to be ready
-        run: |
-          for i in $(seq 1 24); do
-            if curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; then
-              echo "Ollama is ready"; exit 0
-            fi
-            echo "Attempt $i/24 — waiting 5s..."; sleep 5
-          done
-          echo "Ollama did not start within 2 minutes" >&2; exit 1
-
-      - name: Pull Ollama judge model
-        # The Ollama CLI is not installed on the runner — pull via the container's HTTP API
-        run: |
-          curl -s -X POST http://localhost:11434/api/pull \
-            -H "Content-Type: application/json" \
-            -d '{"name": "llama3.2:1b"}' | tail -1
-
       - name: Download eval documents
         # PDFs are gitignored — download the golden source document for CI eval
         run: |
@@ -98,8 +74,7 @@ jobs:
           STRATUM_ANTHROPIC_API_KEY: ${{ secrets.STRATUM_ANTHROPIC_API_KEY }}
           STRATUM_OPENAI_API_KEY: ${{ secrets.STRATUM_OPENAI_API_KEY }}
           STRATUM_EVAL_WARN_ONLY: "true"
-          STRATUM_EVAL_JUDGE_BACKEND: ollama
-          STRATUM_EVAL_JUDGE_MODEL: llama3.2:1b
+          STRATUM_EVAL_JUDGE_BACKEND: openai
 
       - name: Upload DeepEval report
         if: always()
