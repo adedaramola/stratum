@@ -48,7 +48,7 @@ variable "weaviate_data_volume_size_gb" {
 variable "weaviate_version" {
   description = "Weaviate Docker image version to run"
   type        = string
-  default     = "1.25.3"
+  default     = "1.27.0"
 }
 
 variable "anthropic_api_key" {
