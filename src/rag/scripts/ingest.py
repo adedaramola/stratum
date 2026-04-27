@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -17,6 +18,7 @@ from rag.config import get_settings
 from rag.ingestion.chunker import HierarchicalChunker
 from rag.ingestion.embedder import get_embedder
 from rag.ingestion.loaders import Document, DocxLoader, PDFLoader, TextLoader, WebLoader
+from rag.interfaces.store import Chunk
 from rag.store.factory import get_store
 
 logger = structlog.get_logger(__name__)
@@ -102,30 +104,47 @@ def main() -> None:
     child_count = 0
     doc_count = 0
 
-    for loader, path_or_url in sources:
-        try:
-            documents: list[Document] = loader.load(path_or_url)
-        except Exception as exc:
-            log.error("document_load_failed", path=path_or_url, error=str(exc))
-            continue
+    # Phase 1: load documents in parallel (I/O-bound — PDF reads, HTTP fetches)
+    def _load(loader: Any, path_or_url: Any) -> list[Document]:
+        return cast(list[Document], loader.load(path_or_url))
 
+    loaded: list[tuple[Any, list[Document]]] = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        future_to_source = {
+            pool.submit(_load, loader, path_or_url): path_or_url for loader, path_or_url in sources
+        }
+        for future in as_completed(future_to_source):
+            path_or_url = future_to_source[future]
+            try:
+                loaded.append((path_or_url, future.result()))
+            except Exception as exc:
+                log.error("document_load_failed", path=str(path_or_url), error=str(exc))
+
+    # Phase 2: chunk all documents and collect parents/children
+    all_parents: list[Chunk] = []
+    all_children: list[Chunk] = []
+    for _path_or_url, documents in loaded:
         for doc in documents:
             chunks = list(chunker.chunk_document(doc.text, doc.metadata))
-            parents = [c for c in chunks if c.is_parent()]
-            children = [c for c in chunks if not c.is_parent()]
+            all_parents.extend(c for c in chunks if c.is_parent())
+            all_children.extend(c for c in chunks if not c.is_parent())
 
-            if not children:
-                continue
+    if not all_children:
+        log.warning("no_chunks_produced", sources=len(sources))
+        store.store_bm25_corpus([])
+        return
 
-            child_embeddings = embedder.embed_batch([c.text for c in children])
+    # Phase 3: single embed_batch call across all documents
+    child_embeddings = embedder.embed_batch([c.text for c in all_children])
 
-            store.upsert_chunks(parents, embeddings=None)
-            store.upsert_chunks(children, embeddings=child_embeddings)
+    # Phase 4: upsert to store
+    store.upsert_chunks(all_parents, embeddings=None)
+    store.upsert_chunks(all_children, embeddings=child_embeddings)
 
-            all_child_chunks.extend({"id": c.id, "text": c.text, **c.metadata} for c in children)
-            parent_count += len(parents)
-            child_count += len(children)
-            doc_count += 1
+    all_child_chunks = [{"id": c.id, "text": c.text, **c.metadata} for c in all_children]
+    parent_count = len(all_parents)
+    child_count = len(all_children)
+    doc_count = sum(len(docs) for _, docs in loaded)
 
     store.store_bm25_corpus(all_child_chunks)
 

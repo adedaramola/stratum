@@ -25,6 +25,7 @@ from __future__ import annotations
 import datetime
 import json
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -197,7 +198,15 @@ class DeepEvalRunner:
         return test_cases
 
     def _evaluate(self, test_cases: list[Any]) -> dict[str, float]:
-        """Run all four metrics and return per-metric mean scores."""
+        """Run all four metrics concurrently and return per-metric mean scores.
+
+        Each (test_case, metric) pair is an independent LLM call. Running them
+        concurrently with a thread pool reduces wall-clock time from O(n*m) serial
+        to roughly O(n*m / workers) — ~10x faster for 58+ questions.
+
+        A fresh metric instance is created per task to avoid score clobbering
+        across concurrent threads (metric.score is instance state).
+        """
         try:
             from deepeval.metrics import (  # noqa: PLC0415
                 AnswerRelevancyMetric,
@@ -208,56 +217,50 @@ class DeepEvalRunner:
         except ImportError as exc:
             raise ImportError("Install eval dependencies: pip install 'stratum[eval]'") from exc
 
-        # Pair each metric with its score key — avoids relying on __name__ typing
-        named_metrics: list[tuple[str, Any]] = [
-            (
-                "faithfulness",
-                FaithfulnessMetric(
-                    threshold=self._thresholds.get("faithfulness", 0.85),
-                    model=self._judge,
-                    include_reason=True,
-                ),
-            ),
+        # (key, class, threshold) — fresh instance created per task below
+        metric_configs: list[tuple[str, Any, float]] = [
+            ("faithfulness", FaithfulnessMetric, self._thresholds.get("faithfulness", 0.85)),
             (
                 "answer_relevancy",
-                AnswerRelevancyMetric(
-                    threshold=self._thresholds.get("answer_relevancy", 0.80),
-                    model=self._judge,
-                    include_reason=True,
-                ),
+                AnswerRelevancyMetric,
+                self._thresholds.get("answer_relevancy", 0.80),
             ),
             (
                 "contextual_precision",
-                ContextualPrecisionMetric(
-                    threshold=self._thresholds.get("contextual_precision", 0.75),
-                    model=self._judge,
-                    include_reason=True,
-                ),
+                ContextualPrecisionMetric,
+                self._thresholds.get("contextual_precision", 0.75),
             ),
             (
                 "contextual_recall",
-                ContextualRecallMetric(
-                    threshold=self._thresholds.get("contextual_recall", 0.70),
-                    model=self._judge,
-                    include_reason=True,
-                ),
+                ContextualRecallMetric,
+                self._thresholds.get("contextual_recall", 0.70),
             ),
         ]
 
-        metric_scores: dict[str, list[float]] = {key: [] for key, _ in named_metrics}
+        metric_scores: dict[str, list[float]] = {key: [] for key, _, _ in metric_configs}
 
-        for test_case in test_cases:
-            for metric_key, metric in named_metrics:
+        def _measure(
+            test_case: Any, key: str, cls: Any, threshold: float
+        ) -> tuple[str, float | None]:
+            m = cls(threshold=threshold, model=self._judge, include_reason=True)
+            m.measure(test_case)
+            return key, float(m.score) if m.score is not None else None
+
+        # Cap workers: generous enough for throughput, bounded to avoid rate-limit spikes
+        n_workers = min(20, len(test_cases) * len(metric_configs))
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            futures = {
+                pool.submit(_measure, tc, key, cls, thr): (key,)
+                for tc in test_cases
+                for key, cls, thr in metric_configs
+            }
+            for future in as_completed(futures):
                 try:
-                    metric.measure(test_case)
-                    if metric.score is not None:
-                        metric_scores[metric_key].append(float(metric.score))
+                    key, score = future.result()
+                    if score is not None:
+                        metric_scores[key].append(score)
                 except Exception as exc:
-                    logger.warning(
-                        "metric_measure_failed",
-                        metric=metric_key,
-                        error=str(exc),
-                    )
+                    logger.warning("metric_measure_failed", error=str(exc))
 
         return {k: (sum(v) / len(v)) if v else 0.0 for k, v in metric_scores.items()}
 

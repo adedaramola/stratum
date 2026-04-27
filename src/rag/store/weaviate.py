@@ -174,24 +174,26 @@ class WeaviateStore:
             raise StoreError(f"Weaviate semantic search failed: {exc}") from exc
 
     def fetch_parents(self, parent_ids: list[str]) -> list[dict[str, Any]]:
-        """Fetch parent chunks by UUID list."""
+        """Fetch parent chunks by UUID list in a single batch query."""
         if not parent_ids:
             return []
         try:
+            import weaviate.classes.query as wq  # noqa: PLC0415
+
             col = self._client.collections.get(_PARENT_COLLECTION)
-            parents: list[dict[str, Any]] = []
-            for pid in parent_ids:
-                obj = col.query.fetch_object_by_id(uuid=pid)
-                if obj:
-                    parents.append(
-                        {
-                            "id": str(obj.uuid),
-                            "text": obj.properties.get("text", ""),
-                            "source": obj.properties.get("source", ""),
-                            "page": obj.properties.get("page"),
-                        }
-                    )
-            return parents
+            results = col.query.fetch_objects(
+                filters=wq.Filter.by_id().contains_any(parent_ids),
+                limit=len(parent_ids),
+            )
+            return [
+                {
+                    "id": str(obj.uuid),
+                    "text": obj.properties.get("text", ""),
+                    "source": obj.properties.get("source", ""),
+                    "page": obj.properties.get("page"),
+                }
+                for obj in results.objects
+            ]
         except Exception as exc:
             raise StoreError(f"Weaviate fetch_parents failed: {exc}") from exc
 
@@ -203,26 +205,17 @@ class WeaviateStore:
             col = self._client.collections.get(_CORPUS_COLLECTION)
             corpus_json = json.dumps(corpus, ensure_ascii=False)
             updated_at = datetime.datetime.now(datetime.UTC).isoformat()
-            col.data.replace(
-                uuid=_CORPUS_SINGLETON_ID,
-                properties={"corpus_json": corpus_json, "updated_at": updated_at},
-            )
-            logger.info("weaviate_bm25_corpus_stored", count=len(corpus))
-        except Exception:
-            # Object may not exist yet — insert instead
-            try:
-                col = self._client.collections.get(_CORPUS_COLLECTION)
-                import datetime  # noqa: PLC0415
+            props = {"corpus_json": corpus_json, "updated_at": updated_at}
 
-                corpus_json = json.dumps(corpus, ensure_ascii=False)
-                updated_at = datetime.datetime.now(datetime.UTC).isoformat()
-                col.data.insert(
-                    properties={"corpus_json": corpus_json, "updated_at": updated_at},
-                    uuid=_CORPUS_SINGLETON_ID,
-                )
+            existing = col.query.fetch_object_by_id(uuid=_CORPUS_SINGLETON_ID)
+            if existing is None:
+                col.data.insert(properties=props, uuid=_CORPUS_SINGLETON_ID)
                 logger.info("weaviate_bm25_corpus_inserted", count=len(corpus))
-            except Exception as exc2:
-                raise StoreError(f"Failed to store BM25 corpus in Weaviate: {exc2}") from exc2
+            else:
+                col.data.replace(uuid=_CORPUS_SINGLETON_ID, properties=props)
+                logger.info("weaviate_bm25_corpus_stored", count=len(corpus))
+        except Exception as exc:
+            raise StoreError(f"Failed to store BM25 corpus in Weaviate: {exc}") from exc
 
     def load_bm25_corpus(self) -> list[dict[str, Any]]:
         """Load BM25 corpus from the StratumCorpus singleton. Returns [] if absent."""
