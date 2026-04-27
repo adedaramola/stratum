@@ -1,5 +1,8 @@
 # Stratum
 
+[![CI](https://github.com/adedaramola/stratum/actions/workflows/ci.yml/badge.svg)](https://github.com/adedaramola/stratum/actions/workflows/ci.yml)
+[![DeepEval](https://github.com/adedaramola/stratum/actions/workflows/eval.yml/badge.svg)](https://github.com/adedaramola/stratum/actions/workflows/eval.yml)
+
 A production-grade domain-specific RAG engine — ask questions against your documents and receive precise, citation-grounded answers.
 
 ---
@@ -42,7 +45,8 @@ Document ingestion:
 | Vector store | Chroma (in-process) | Weaviate 1.27.0 | Zero Docker for dev; HNSW tuning + gRPC for prod |
 | Retrieval fusion | BM25 + ANN → RRF (K=60) | Same | Parameter-free, robust to miscalibrated retrievers |
 | Re-ranker | cross-encoder/ms-marco-MiniLM-L-6-v2 | Same | Strong precision at low latency (~50ms CPU) |
-| LLM | claude-sonnet-4-20250514 | Same | Citation-enforcing prompt, structured output |
+| LLM | claude-sonnet-4-6 | Same | Citation-enforcing prompt, structured output |
+| Tracing | Langfuse (opt-in no-op) | Langfuse cloud | Set `STRATUM_LANGFUSE_SECRET_KEY` to enable; system runs identically without it |
 | API | FastAPI + uvicorn | Same | `/query` endpoint, `/health` liveness probe |
 | UI | Streamlit | Same | Chat interface with citation rendering |
 | Eval | DeepEval + Ollama judge | Same | Pytest-native, zero API cost for local judge |
@@ -157,6 +161,22 @@ STRATUM_OPENAI_API_KEY=sk-proj-...
 ```
 
 Default judge is local Ollama (`llama3.1:8b`) at zero API cost.
+
+### Langfuse tracing (opt-in)
+
+```bash
+pip install -e ".[observability]"
+
+# .env
+STRATUM_LANGFUSE_PUBLIC_KEY=pk-lf-...
+STRATUM_LANGFUSE_SECRET_KEY=sk-lf-...
+# Optional — defaults to Langfuse cloud
+STRATUM_LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+When keys are absent the system runs identically — all trace calls are no-ops.
+Instruments retrieval (dense hits, RRF scores, rerank), generation (prompt tokens,
+latency), and end-to-end query spans.
 
 ---
 
