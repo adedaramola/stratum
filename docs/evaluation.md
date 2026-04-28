@@ -7,7 +7,7 @@ how to set defensible thresholds.
 **Why DeepEval over RAGAS:**
 - Pytest-native — metrics are assertions, not a separate runner
 - Self-explaining failures — each metric reports its diagnostic reasoning
-- Pluggable judge — defaults to local Ollama (zero API cost), OpenAI is opt-in
+- Pluggable judge — local Ollama (zero API cost) for local runs; CI uses OpenAI `gpt-4o-mini`
 - Stable API across minor versions (RAGAS has broken on minor bumps historically)
 
 ---
@@ -86,9 +86,15 @@ This runs `pytest tests/e2e/test_eval.py -v --tb=short`.
 
 Prerequisites:
 - `STRATUM_ANTHROPIC_API_KEY` set in `.env`
-- Ollama running locally with the judge model pulled: `make ollama-pull`
 - Golden dataset at `data/golden/qa_pairs.jsonl`
 - Documents ingested: `make ingest SOURCE=data/golden/docs/`
+
+**Local Ollama judge (default — zero API cost):**
+- Ollama running locally with the judge model pulled: `make ollama-pull`
+
+**OpenAI judge (used in CI):**
+- `STRATUM_OPENAI_API_KEY` set in `.env`
+- `STRATUM_EVAL_JUDGE_BACKEND=openai` set in `.env` or passed on the command line
 
 Output: `reports/deepeval_report.json` with scores, failures, judge info, and timestamp.
 
@@ -155,4 +161,16 @@ Now threshold violations fail CI. `eval.yml` runs weekly and on manual trigger.
 
 | Date | faithfulness | answer_relevancy | contextual_precision | contextual_recall | Judge | Notes |
 |------|-------------|-----------------|----------------------|-------------------|-------|-------|
-| —    | —           | —               | —                    | —                 | —     | No baseline established yet |
+| 2026-04-27 | 0.708 | 0.806 | 0.699 | 0.923 | gpt-4o-mini | First observed run — 58 questions, attention_is_all_you_need.pdf, warn_only=true |
+
+**Observations from first run:**
+- `faithfulness` (0.708) is 0.142 below the 0.850 starting threshold — generator is producing
+  claims not fully grounded in retrieved context. Priority fix: tighten the system prompt.
+- `contextual_precision` (0.699) is 0.051 below the 0.750 starting threshold — retriever
+  is returning some irrelevant passages ahead of relevant ones. Priority fix: reranker tuning.
+- `answer_relevancy` (0.806) and `contextual_recall` (0.923) are comfortably above threshold.
+
+**Next steps before flipping `STRATUM_EVAL_WARN_ONLY=false`:**
+1. Run eval ≥2 more times to confirm score stability (LLM judge variance ±0.03–0.05).
+2. If scores are stable, lower thresholds to `mean - 0.05` or improve the pipeline first.
+3. Document updated thresholds here before activating the hard gate.

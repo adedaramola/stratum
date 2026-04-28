@@ -178,20 +178,21 @@ project. RAGAS also runs as a separate runner, not as pytest assertions, which m
 failures don't integrate naturally with CI tooling.
 
 **Decision:**
-Use DeepEval with a local Ollama judge (`llama3.1:8b`) as the default. DeepEval is
-pytest-native (metrics are assertions, failures include diagnostic reasoning), has a stable
-API across minor versions, and supports pluggable judge backends. The local Ollama judge
-runs at zero API cost. `STRATUM_EVAL_JUDGE_BACKEND=openai` switches to GPT-4o-mini for
-higher-fidelity scoring when needed.
+Use DeepEval with a local Ollama judge (`llama3.1:8b`) as the default for local runs.
+DeepEval is pytest-native (metrics are assertions, failures include diagnostic reasoning),
+has a stable API across minor versions, and supports pluggable judge backends.
+`STRATUM_EVAL_JUDGE_BACKEND=openai` switches to `gpt-4o-mini` for higher-fidelity scoring;
+this is the judge used in the weekly CI gate (Ollama on CPU runners is too slow for 58+
+questions within the 60-minute job timeout).
 
 Four metrics: `FaithfulnessMetric`, `AnswerRelevancyMetric`,
 `ContextualPrecisionMetric`, `ContextualRecallMetric`. Thresholds start in warn-only mode
 (`STRATUM_EVAL_WARN_ONLY=true`) until empirical baselines are established.
 
 **Consequences:**
-- ✅ Zero API cost for weekly eval runs
 - ✅ Pytest-native — failures are first-class CI failures with diagnostic output
 - ✅ Stable API — no fragile version pinning required
 - ✅ Self-explaining failures — each metric reports why it failed
+- ✅ Local runs are zero API cost (Ollama judge)
+- ❌ CI eval uses OpenAI `gpt-4o-mini` — costs ~$0.02–0.10 per weekly run
 - ❌ Local Ollama judge agreement with GPT-4o-mini is ~85%, not 100%
-- ❌ Adds Ollama as a CI service container dependency
